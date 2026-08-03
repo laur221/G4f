@@ -4,10 +4,8 @@ const cookieSession = require('cookie-session');
 const path = require('path');
 const fs = require('fs');
 
-// Render (plan gratuit) nu are disc persistent si nici Shell — deci nu putem
-// urca storageState.json direct pe server. In schimb, il trecem prin variabila
-// de mediu STORAGE_STATE_B64 (continutul fisierului, encodat base64) si il
-// reconstruim aici, la fiecare pornire a serverului.
+// Render (plan gratuit) nu are disc persistent — reconstruim storageState.json
+// din variabila de mediu STORAGE_STATE_B64 (continut base64).
 const STATE_PATH = path.join(__dirname, 'storageState.json');
 if (process.env.STORAGE_STATE_B64) {
   try {
@@ -19,12 +17,12 @@ if (process.env.STORAGE_STATE_B64) {
 } else if (!fs.existsSync(STATE_PATH)) {
   console.warn(
     'Atentie: lipseste atat storageState.json cat si STORAGE_STATE_B64 — ' +
-    'actiunile Start/Stop/Restart vor esua pana setezi una din ele.'
+    'actiunile vor esua pana setezi una din ele.'
   );
 }
 
 const { verifyCredentials } = require('./lib/auth');
-const { runAction } = require('./lib/browser');
+const { runAction, extendServer } = require('./lib/browser');
 const { getCachedStatus, invalidate } = require('./lib/status');
 
 const app = express();
@@ -35,7 +33,7 @@ app.use(
   cookieSession({
     name: 'g4f-relay-session',
     keys: [process.env.SESSION_SECRET || 'dev-secret-schimba-ma'],
-    maxAge: 30 * 24 * 60 * 60 * 1000, // 30 zile — se tine minte loginul, nu trebuie reintrodus
+    maxAge: 30 * 24 * 60 * 60 * 1000, // 30 zile
     httpOnly: true,
     sameSite: 'lax',
   })
@@ -46,7 +44,7 @@ function requireAuth(req, res, next) {
   return res.redirect('/login');
 }
 
-// ── Login ────────────────────────────────────────────────
+// ── Login ──
 app.get('/login', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'login.html'));
 });
@@ -70,12 +68,12 @@ app.post('/logout', (req, res) => {
   res.redirect('/login');
 });
 
-// ── Dashboard ────────────────────────────────────────────
+// ── Dashboard ──
 app.get('/', requireAuth, (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'dashboard.html'));
 });
 
-// ── Actiuni server (Start / Stop / Restart) ─────────────
+// ── Actiuni server (Start / Stop / Restart) ──
 app.post('/api/action/:action', requireAuth, async (req, res) => {
   const { action } = req.params;
   if (!['start', 'stop', 'restart'].includes(action)) {
@@ -83,7 +81,7 @@ app.post('/api/action/:action', requireAuth, async (req, res) => {
   }
   try {
     const result = await runAction(action);
-    invalidate(); // urmatoarea verificare de status sa reflecte schimbarea, nu cache-ul vechi
+    invalidate();
     res.json(result);
   } catch (err) {
     console.error(`Eroare la actiunea ${action}:`, err.message);
@@ -91,7 +89,19 @@ app.post('/api/action/:action', requireAuth, async (req, res) => {
   }
 });
 
-// ── Status server (timp ramas, online/offline) ─────────
+// ── Extindere +90 min (cu Turnstile auto-rezolvare) ──
+app.post('/api/extend', requireAuth, async (req, res) => {
+  try {
+    const result = await extendServer();
+    if (result.ok) invalidate(); // forteaza refresh la status dupa extindere
+    res.json(result);
+  } catch (err) {
+    console.error('Eroare la extindere:', err.message);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ── Status server (timp ramas, online/offline) ──
 app.get('/api/status', requireAuth, async (req, res) => {
   try {
     const status = await getCachedStatus();
@@ -102,7 +112,7 @@ app.get('/api/status', requireAuth, async (req, res) => {
   }
 });
 
-// ── Health check (folosit si de self-ping-ul anti-sleep) ────
+// ── Health check (folosit si de self-ping-ul anti-sleep) ──
 app.get('/health', (req, res) => {
   res.json({ ok: true, uptime: process.uptime() });
 });
@@ -112,12 +122,9 @@ app.listen(PORT, () => {
   console.log(`g4f-relay ruleaza pe portul ${PORT}`);
 });
 
-// ── Self-ping anti-sleep ──────────────────────────────────
-// Render (plan gratuit) adoarme serviciul dupa ~15 min fara cereri HTTP.
-// Ne facem singuri o cerere periodica ca sa ramana treaz. Functioneaza
-// doar daca setezi PUBLIC_URL = link-ul public al serviciului de pe Render.
+// ── Self-ping anti-sleep ──
 if (process.env.PUBLIC_URL) {
-  const PING_INTERVAL_MS = 4 * 60 * 1000; // la fiecare 4 minute — sub pragul de 15 min
+  const PING_INTERVAL_MS = 4 * 60 * 1000;
   setInterval(() => {
     fetch(`${process.env.PUBLIC_URL.replace(/\/$/, '')}/health`)
       .then((r) => console.log(`[self-ping] ${r.status}`))

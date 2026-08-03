@@ -1,0 +1,12 @@
+services:
+  g4f-relay:
+    build: .
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    volumes:
+      # Montam storageState.json local (generat cu "npm run capture-session"
+      # pe calculatorul tau, cu Chrome vizibil) direct in container, ca sa nu
+      # mai fie nevoie de STORAGE_STATE_B64 cand testezi local.
+      - ./storageState.json:/app/storageState.json:ro
