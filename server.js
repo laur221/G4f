@@ -2,6 +2,26 @@ require('dotenv').config();
 const express = require('express');
 const cookieSession = require('cookie-session');
 const path = require('path');
+const fs = require('fs');
+
+// Render (plan gratuit) nu are disc persistent si nici Shell — deci nu putem
+// urca storageState.json direct pe server. In schimb, il trecem prin variabila
+// de mediu STORAGE_STATE_B64 (continutul fisierului, encodat base64) si il
+// reconstruim aici, la fiecare pornire a serverului.
+const STATE_PATH = path.join(__dirname, 'storageState.json');
+if (process.env.STORAGE_STATE_B64) {
+  try {
+    fs.writeFileSync(STATE_PATH, Buffer.from(process.env.STORAGE_STATE_B64, 'base64'));
+    console.log('storageState.json reconstruit din STORAGE_STATE_B64.');
+  } catch (err) {
+    console.error('Nu am putut scrie storageState.json din STORAGE_STATE_B64:', err);
+  }
+} else if (!fs.existsSync(STATE_PATH)) {
+  console.warn(
+    'Atentie: lipseste atat storageState.json cat si STORAGE_STATE_B64 — ' +
+    'actiunile Start/Stop/Restart vor esua pana setezi una din ele.'
+  );
+}
 
 const { verifyCredentials } = require('./lib/auth');
 const { runAction } = require('./lib/browser');

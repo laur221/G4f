@@ -12,8 +12,20 @@ const LOGIN_URL = 'https://control.gaming4free.net'; // ajusteaza daca link-ul d
 const STATE_PATH = path.join(__dirname, 'storageState.json');
 
 (async () => {
-  const browser = await chromium.launch({ headless: false });
-  const context = await browser.newContext();
+  const browser = await chromium.launch({
+    headless: false,
+    channel: 'chrome', // foloseste Chrome-ul REAL instalat pe calculator, nu Chromium-ul Playwright
+    args: ['--disable-blink-features=AutomationControlled'],
+  });
+  const context = await browser.newContext({
+    viewport: null,
+    userAgent:
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
+      '(KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36',
+  });
+  await context.addInitScript(() => {
+    Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+  });
   const page = await context.newPage();
 
   await page.goto(LOGIN_URL);
