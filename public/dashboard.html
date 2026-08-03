@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+<meta charset="UTF-8">
+<title>Control Server</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  body { font-family: system-ui, sans-serif; background:#0a0814; color:#f5f7fa;
+         display:flex; align-items:center; justify-content:center; min-height:100vh; margin:0;
+         padding:20px; box-sizing:border-box; }
+  .card { background:#14162a; padding:32px 28px; border-radius:14px; width:300px;
+          box-shadow:0 20px 50px rgba(0,0,0,.5); border:1px solid rgba(255,255,255,.08); text-align:center; }
+  h1 { font-size:16px; margin:0 0 14px; }
+  #remaining { font-family:ui-monospace,monospace; font-size:13px; color:rgba(255,255,255,.5);
+               margin-bottom:18px; min-height:16px; }
+  #remaining.warn { color:#fbbf24; font-weight:700; }
+  .banner { display:none; background:rgba(255,92,108,.12); border:1px solid rgba(255,92,108,.35);
+            border-radius:9px; padding:10px 12px; font-size:12px; color:#ff9aa5; margin-bottom:16px;
+            line-height:1.5; text-align:left; }
+  .banner.show { display:block; }
+  button { width:100%; padding:13px; margin-bottom:10px; border:none; border-radius:9px;
+           font-weight:700; font-size:13px; letter-spacing:.05em; cursor:pointer; color:#fff;
+           transition:opacity .15s; }
+  button:disabled { opacity:.5; cursor:not-allowed; }
+  #start   { background:#a3e635; color:#0a0814; }
+  #restart { background:#27e1ff; color:#0a0814; }
+  #stop    { background:#ff5c6c; }
+  #status  { font-size:12px; color:rgba(255,255,255,.5); margin-top:14px; min-height:16px; }
+  form { display:inline; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>🎮 Serverul Nicu — PalWorld</h1>
+    <div id="remaining">Se verifica timpul ramas...</div>
+    <div class="banner" id="warn-banner">
+      ⚠️ Mai sunt sub 30 de minute! Intra pe
+      <a href="https://control.gaming4free.net" target="_blank" style="color:#ff9aa5;">gaming4free.net</a>
+      si apasa "+90 min" (necesita rezolvarea unui captcha manual).
+    </div>
+    <button id="start" onclick="run('start')">▶ PORNESTE</button>
+    <button id="restart" onclick="run('restart')">⟳ RESTART</button>
+    <button id="stop" onclick="run('stop')">■ OPRESTE</button>
+    <div id="status"></div>
+    <form method="POST" action="/logout" style="margin-top:14px;">
+      <button type="submit" style="background:transparent;color:rgba(255,255,255,.35);font-weight:400;">Iesire</button>
+    </form>
+  </div>
+<script>
+let localSeconds = null;   // ultimul timp ramas cunoscut, tinut local
+let isOnline = false;
+
+function formatHms(totalSeconds) {
+  const s = Math.max(0, Math.floor(totalSeconds));
+  const h = String(Math.floor(s / 3600)).padStart(2, '0');
+  const m = String(Math.floor((s % 3600) / 60)).padStart(2, '0');
+  const sec = String(s % 60).padStart(2, '0');
+  return `${h}:${m}:${sec}`;
+}
+
+function renderRemaining() {
+  const remainingEl = document.getElementById('remaining');
+  const banner = document.getElementById('warn-banner');
+
+  if (localSeconds === null) {
+    remainingEl.textContent = 'Se verifica timpul ramas...';
+    return;
+  }
+
+  const online = isOnline ? '🟢 Online' : '⚪ Offline';
+  remainingEl.textContent = `${online} · ${formatHms(localSeconds)} ramase`;
+
+  const warn = localSeconds < 1800; // sub 30 min
+  remainingEl.classList.toggle('warn', warn);
+  banner.classList.toggle('show', warn);
+}
+
+// Ceasul local — scade cate o secunda, fara sa bata la server.
+setInterval(() => {
+  if (localSeconds !== null && localSeconds > 0) {
+    localSeconds -= 1;
+    renderRemaining();
+  }
+}, 1000);
+
+async function run(action) {
+  const buttons = document.querySelectorAll('#start,#restart,#stop');
+  const statusEl = document.getElementById('status');
+  buttons.forEach(b => b.disabled = true);
+  statusEl.textContent = 'Se proceseaza...';
+  try {
+    const res = await fetch('/api/action/' + action, { method: 'POST' });
+    const data = await res.json();
+    statusEl.textContent = data.ok ? '✓ Comanda a fost trimisa.' : ('Eroare: ' + data.error);
+    if (data.ok) setTimeout(checkStatus, 1500);
+  } catch (e) {
+    statusEl.textContent = 'Eroare de retea.';
+  } finally {
+    buttons.forEach(b => b.disabled = false);
+  }
+}
+
+// Sincronizare periodica cu serverul — corecteaza orice deriva a
+// ceasului local si actualizeaza starea online/offline reala.
+async function checkStatus() {
+  const remainingEl = document.getElementById('remaining');
+  try {
+    const res = await fetch('/api/status');
+    const data = await res.json();
+    if (!data.ok) {
+      remainingEl.textContent = 'Nu am putut verifica timpul ramas.';
+      return;
+    }
+    if (typeof data.remainingSeconds === 'number') {
+      localSeconds = data.remainingSeconds;
+    }
+    isOnline = !!data.online;
+    renderRemaining();
+  } catch (e) {
+    remainingEl.textContent = 'Eroare de retea la verificarea statusului.';
+  }
+}
+
+checkStatus();
+setInterval(checkStatus, 60000); // resincronizare cu serverul la fiecare minut
+</script>
+</body>
+</html>

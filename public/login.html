@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+<meta charset="UTF-8">
+<title>Control Server</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  body { font-family: system-ui, sans-serif; background:#0a0814; color:#f5f7fa;
+         display:flex; align-items:center; justify-content:center; height:100vh; margin:0; }
+  form { background:#14162a; padding:32px 28px; border-radius:14px; width:280px;
+         box-shadow:0 20px 50px rgba(0,0,0,.5); border:1px solid rgba(255,255,255,.08); }
+  h1 { font-size:16px; margin:0 0 20px; text-align:center; }
+  input { width:100%; box-sizing:border-box; padding:10px 12px; margin-bottom:12px;
+          border-radius:8px; border:1px solid rgba(255,255,255,.15); background:#0a0814;
+          color:#fff; font-size:14px; }
+  button { width:100%; padding:11px; border:none; border-radius:8px; background:#7b3aff;
+           color:#fff; font-weight:600; cursor:pointer; font-size:14px; }
+  button:hover { background:#8f57ff; }
+  .err { color:#ff5c6c; font-size:13px; margin-bottom:10px; text-align:center; }
+</style>
+</head>
+<body>
+  <form method="POST" action="/login">
+    <h1>🎮 Control Server</h1>
+    <div class="err" id="err" style="display:none;"></div>
+    <input type="text" name="username" placeholder="Utilizator" required>
+    <input type="password" name="password" placeholder="Parola" required>
+    <button type="submit">Intra</button>
+  </form>
+  <script>
+    const params = new URLSearchParams(location.search);
+    if (params.get('error')) {
+      const el = document.getElementById('err');
+      el.style.display = 'block';
+      el.textContent = 'Utilizator sau parola gresita.';
+    }
+  </script>
+</body>
+</html>
