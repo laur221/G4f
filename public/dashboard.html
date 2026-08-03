@@ -131,6 +131,19 @@
   footer{
     text-align:center; margin-top:16px; font-family:var(--mono); font-size:9.5px; color:var(--ink-faint);
   }
+
+  /* ── Resurse (CPU / MEMORY / NETWORK), live din consola G4F ── */
+  .res-panel{ margin-top:16px; padding-top:14px; border-top:1px solid var(--line); display:none; }
+  .res-panel.show{ display:block; }
+  .res-row{ display:flex; align-items:center; justify-content:space-between; margin-bottom:9px; }
+  .res-row:last-child{ margin-bottom:0; }
+  .res-label{
+    font-family:var(--pixel); font-size:7.5px; letter-spacing:.08em; flex-shrink:0; margin-right:10px;
+  }
+  .res-val{
+    font-family:var(--mono); font-size:11px; color:var(--ink-dim); text-align:right;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  }
 </style>
 </head>
 <body>
@@ -162,6 +175,21 @@
     </div>
 
     <div id="status"></div>
+
+    <div class="res-panel" id="res-panel">
+      <div class="res-row">
+        <span class="res-label" style="color:var(--lime)">CPU</span>
+        <span class="res-val" id="res-cpu">—</span>
+      </div>
+      <div class="res-row">
+        <span class="res-label" style="color:var(--cyan)">MEMORY</span>
+        <span class="res-val" id="res-memory">—</span>
+      </div>
+      <div class="res-row">
+        <span class="res-label" style="color:var(--pink)">NETWORK</span>
+        <span class="res-val" id="res-network">—</span>
+      </div>
+    </div>
 
     <div class="logout-row">
       <form method="POST" action="/logout" style="display:inline;">
@@ -253,9 +281,27 @@ async function checkStatus() {
     }
     isOnline = !!data.online;
     renderRemaining();
+    renderResources(data.resources);
   } catch (e) {
     remainingEl.innerHTML = 'eroare<span class="unit">retea</span>';
   }
+}
+
+// Afiseaza gauge-urile CPU / MEMORY / NETWORK citite din consola G4F.
+// Cand serverul e OFFLINE, consola oricum arata "—" pentru toate, deci
+// panoul se ascunde ca sa nu ocupe loc degeaba.
+function renderResources(resources) {
+  const panel = document.getElementById('res-panel');
+
+  if (!resources || !isOnline) {
+    panel.classList.remove('show');
+    return;
+  }
+
+  document.getElementById('res-cpu').textContent = resources.cpu || '—';
+  document.getElementById('res-memory').textContent = resources.memory || '—';
+  document.getElementById('res-network').textContent = resources.network || '—';
+  panel.classList.add('show');
 }
 
 checkStatus();
