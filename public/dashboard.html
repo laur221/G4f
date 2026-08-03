@@ -2,50 +2,176 @@
 <html lang="ro">
 <head>
 <meta charset="UTF-8">
-<title>Control Server</title>
+<title>Console — G4F Relay</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Space+Grotesk:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
-  body { font-family: system-ui, sans-serif; background:#0a0814; color:#f5f7fa;
-         display:flex; align-items:center; justify-content:center; min-height:100vh; margin:0;
-         padding:20px; box-sizing:border-box; }
-  .card { background:#14162a; padding:32px 28px; border-radius:14px; width:300px;
-          box-shadow:0 20px 50px rgba(0,0,0,.5); border:1px solid rgba(255,255,255,.08); text-align:center; }
-  h1 { font-size:16px; margin:0 0 14px; }
-  #remaining { font-family:ui-monospace,monospace; font-size:13px; color:rgba(255,255,255,.5);
-               margin-bottom:18px; min-height:16px; }
-  #remaining.warn { color:#fbbf24; font-weight:700; }
-  .banner { display:none; background:rgba(255,92,108,.12); border:1px solid rgba(255,92,108,.35);
-            border-radius:9px; padding:10px 12px; font-size:12px; color:#ff9aa5; margin-bottom:16px;
-            line-height:1.5; text-align:left; }
-  .banner.show { display:block; }
-  button { width:100%; padding:13px; margin-bottom:10px; border:none; border-radius:9px;
-           font-weight:700; font-size:13px; letter-spacing:.05em; cursor:pointer; color:#fff;
-           transition:opacity .15s; }
-  button:disabled { opacity:.5; cursor:not-allowed; }
-  #start   { background:#a3e635; color:#0a0814; }
-  #restart { background:#27e1ff; color:#0a0814; }
-  #stop    { background:#ff5c6c; }
-  #status  { font-size:12px; color:rgba(255,255,255,.5); margin-top:14px; min-height:16px; }
-  form { display:inline; }
+  :root{
+    --pink:#ff3aa3;--lime:#a3e635;--cyan:#27e1ff;
+    --purple:#7b3aff;--gold:#fbbf24;--red:#ff5c6c;
+    --surface:rgba(16,18,32,0.82);--line:rgba(255,255,255,0.10);--line-2:rgba(255,255,255,0.18);
+    --ink:#f5f7fa;--ink-dim:rgba(255,255,255,0.72);--ink-muted:rgba(255,255,255,0.50);--ink-faint:rgba(255,255,255,0.32);
+    --pixel:'Press Start 2P',monospace;--sans:'Space Grotesk',system-ui,sans-serif;--mono:'Geist Mono',ui-monospace,monospace;
+  }
+
+  * { box-sizing:border-box; }
+  html,body{ height:100%; }
+  body{
+    margin:0; font-family:var(--sans); color:var(--ink);
+    background:#0a0814;
+    min-height:100vh; display:flex; align-items:center; justify-content:center;
+    padding:20px; position:relative; overflow:hidden;
+  }
+
+  /* ── Background: radial glows + scrolling grid floor (same recipe as G4F) ── */
+  .bg{
+    position:fixed; inset:0; pointer-events:none; z-index:0;
+    background:
+      radial-gradient(ellipse 80% 60% at 18% 20%, rgba(255,58,163,.18) 0%, transparent 55%),
+      radial-gradient(ellipse 70% 60% at 88% 85%, rgba(123,58,255,.20) 0%, transparent 55%),
+      radial-gradient(ellipse 60% 50% at 50% 110%, rgba(39,225,255,.16) 0%, transparent 60%),
+      #0a0814;
+  }
+  .grid-floor{
+    position:fixed; left:0; right:0; bottom:-10vh; height:55vh; pointer-events:none; z-index:1;
+    background-image:
+      linear-gradient(rgba(255,58,163,.18) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(39,225,255,.18) 1px, transparent 1px);
+    background-size:80px 80px;
+    transform:perspective(700px) rotateX(60deg); transform-origin:50% 0%;
+    mask-image:linear-gradient(to bottom, transparent 0%, black 30%, black 100%);
+    -webkit-mask-image:linear-gradient(to bottom, transparent 0%, black 30%, black 100%);
+    animation:grid-scroll 8s linear infinite;
+  }
+  @keyframes grid-scroll{ from{background-position:0 0} to{background-position:0 80px} }
+  .scanlines{
+    position:fixed; inset:0; pointer-events:none; z-index:3;
+    background:repeating-linear-gradient(to bottom, rgba(255,255,255,.02) 0 1px, transparent 1px 3px);
+  }
+
+  /* ── Card ── */
+  .card{
+    position:relative; z-index:4; width:100%; max-width:340px;
+    background:var(--surface); border:2px solid var(--line); border-radius:14px;
+    padding:24px 22px 22px; overflow:hidden;
+    backdrop-filter:blur(20px) saturate(140%); -webkit-backdrop-filter:blur(20px) saturate(140%);
+    box-shadow:0 20px 50px rgba(0,0,0,.5);
+  }
+  .card::before{
+    content:""; position:absolute; top:0; left:0; right:0; height:3px;
+    background:linear-gradient(90deg,var(--pink),var(--lime),var(--cyan),var(--pink));
+    background-size:200% 100%; animation:rainbow 5s linear infinite;
+  }
+  @keyframes rainbow{ from{background-position:0% 0} to{background-position:200% 0} }
+
+  h1{
+    font-family:var(--pixel); font-size:12px; margin:6px 0 16px; text-align:center;
+    color:#fff; text-shadow:2px 2px 0 var(--pink), 4px 4px 0 rgba(0,0,0,.4);
+    letter-spacing:.02em; line-height:1.6;
+  }
+
+  /* ── Status pill + timer (matches G4F's renewal-timer widget) ── */
+  .status-row{ display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; }
+  .status-pill{
+    display:inline-flex; align-items:center; gap:7px; padding:6px 12px; border-radius:99px;
+    font-family:var(--pixel); font-size:8px; letter-spacing:.10em;
+  }
+  .status-pill .dot{ width:6px; height:6px; border-radius:50%; flex-shrink:0; }
+  .status-pill.online{ background:rgba(163,230,53,.12); color:var(--lime); }
+  .status-pill.online .dot{ background:var(--lime); box-shadow:0 0 8px var(--lime); animation:blink 1.4s infinite; }
+  .status-pill.offline{ background:rgba(255,255,255,.05); color:var(--ink-muted); }
+  .status-pill.offline .dot{ background:var(--ink-faint); }
+  @keyframes blink{ 50%{opacity:.35} }
+
+  .time{
+    font-family:var(--mono); font-size:22px; font-weight:500; letter-spacing:.01em;
+    margin:10px 0 4px; text-align:center;
+  }
+  .time .unit{ font-size:11px; color:var(--ink-muted); margin-left:6px; font-weight:400; }
+
+  .banner{
+    display:none; background:rgba(255,92,108,.10); border:1px solid rgba(255,92,108,.35);
+    border-radius:9px; padding:11px 12px; font-family:var(--mono); font-size:11.5px;
+    color:#ffb3bb; margin:14px 0; line-height:1.6; text-align:left;
+  }
+  .banner.show{ display:block; }
+  .banner a{ color:var(--gold); }
+
+  /* ── Action buttons (styled like G4F's pwr-btn) ── */
+  .actions{ display:flex; flex-direction:column; gap:8px; margin-top:16px; }
+  .pwr-btn{
+    display:flex; align-items:center; justify-content:center; gap:8px;
+    padding:12px; border-radius:9px; font-family:var(--pixel); font-size:9px;
+    letter-spacing:.08em; cursor:pointer; border:2px solid; background:rgba(255,255,255,.03);
+    transition:all .15s; color:var(--ink);
+  }
+  .pwr-btn:active{ transform:translateY(1px); }
+  .pwr-btn:disabled{ opacity:.4; cursor:not-allowed; transform:none; }
+  .pwr-start  { border-color:rgba(163,230,53,.45); color:var(--lime); }
+  .pwr-start:hover:not(:disabled)  { border-color:var(--lime); background:rgba(163,230,53,.12); box-shadow:0 0 14px rgba(163,230,53,.3); }
+  .pwr-restart{ border-color:rgba(39,225,255,.45); color:var(--cyan); }
+  .pwr-restart:hover:not(:disabled){ border-color:var(--cyan); background:rgba(39,225,255,.10); box-shadow:0 0 14px rgba(39,225,255,.25); }
+  .pwr-stop   { border-color:rgba(255,92,108,.45); color:var(--red); }
+  .pwr-stop:hover:not(:disabled)   { border-color:var(--red); background:rgba(255,92,108,.12); box-shadow:0 0 14px rgba(255,92,108,.25); }
+
+  #status{
+    font-family:var(--mono); font-size:11.5px; color:var(--ink-muted);
+    margin-top:14px; min-height:16px; text-align:center;
+  }
+
+  .logout-row{ text-align:center; margin-top:14px; }
+  .logout-row button{
+    background:none; border:none; color:var(--ink-faint); font-family:var(--mono);
+    font-size:11px; cursor:pointer; text-decoration:underline; text-underline-offset:2px;
+  }
+  .logout-row button:hover{ color:var(--ink-muted); }
+
+  footer{
+    text-align:center; margin-top:16px; font-family:var(--mono); font-size:9.5px; color:var(--ink-faint);
+  }
 </style>
 </head>
 <body>
+  <div class="bg"></div>
+  <div class="grid-floor"></div>
+  <div class="scanlines"></div>
+
   <div class="card">
-    <h1>🎮 Serverul Nicu — PalWorld</h1>
-    <div id="remaining">Se verifica timpul ramas...</div>
+    <h1>🎮 Serverul Nicu<br>PalWorld</h1>
+
+    <div class="status-row">
+      <span class="status-pill offline" id="status-pill">
+        <span class="dot"></span><span id="status-label">SE VERIFICA</span>
+      </span>
+    </div>
+
+    <div class="time" id="remaining">--:--:--<span class="unit">ramase</span></div>
+
     <div class="banner" id="warn-banner">
       ⚠️ Mai sunt sub 30 de minute! Intra pe
-      <a href="https://control.gaming4free.net" target="_blank" style="color:#ff9aa5;">gaming4free.net</a>
+      <a href="https://control.gaming4free.net" target="_blank">gaming4free.net</a>
       si apasa "+90 min" (necesita rezolvarea unui captcha manual).
     </div>
-    <button id="start" onclick="run('start')">▶ PORNESTE</button>
-    <button id="restart" onclick="run('restart')">⟳ RESTART</button>
-    <button id="stop" onclick="run('stop')">■ OPRESTE</button>
+
+    <div class="actions">
+      <button class="pwr-btn pwr-start" id="start" onclick="run('start')">▶ PORNESTE</button>
+      <button class="pwr-btn pwr-restart" id="restart" onclick="run('restart')">⟳ RESTART</button>
+      <button class="pwr-btn pwr-stop" id="stop" onclick="run('stop')">■ OPRESTE</button>
+    </div>
+
     <div id="status"></div>
-    <form method="POST" action="/logout" style="margin-top:14px;">
-      <button type="submit" style="background:transparent;color:rgba(255,255,255,.35);font-weight:400;">Iesire</button>
-    </form>
+
+    <div class="logout-row">
+      <form method="POST" action="/logout" style="display:inline;">
+        <button type="submit">Iesire</button>
+      </form>
+    </div>
   </div>
+
+  <footer>g4f-relay</footer>
+
 <script>
 let localSeconds = null;   // ultimul timp ramas cunoscut, tinut local
 let isOnline = false;
@@ -61,17 +187,21 @@ function formatHms(totalSeconds) {
 function renderRemaining() {
   const remainingEl = document.getElementById('remaining');
   const banner = document.getElementById('warn-banner');
+  const pill = document.getElementById('status-pill');
+  const label = document.getElementById('status-label');
+
+  pill.classList.toggle('online', isOnline);
+  pill.classList.toggle('offline', !isOnline);
+  label.textContent = isOnline ? 'ONLINE' : 'OFFLINE';
 
   if (localSeconds === null) {
-    remainingEl.textContent = 'Se verifica timpul ramas...';
+    remainingEl.innerHTML = '--:--:--<span class="unit">ramase</span>';
     return;
   }
 
-  const online = isOnline ? '🟢 Online' : '⚪ Offline';
-  remainingEl.textContent = `${online} · ${formatHms(localSeconds)} ramase`;
+  remainingEl.innerHTML = `${formatHms(localSeconds)}<span class="unit">ramase</span>`;
 
   const warn = localSeconds < 1800; // sub 30 min
-  remainingEl.classList.toggle('warn', warn);
   banner.classList.toggle('show', warn);
 }
 
@@ -108,7 +238,7 @@ async function checkStatus() {
     const res = await fetch('/api/status');
     const data = await res.json();
     if (!data.ok) {
-      remainingEl.textContent = 'Nu am putut verifica timpul ramas.';
+      remainingEl.innerHTML = 'eroare<span class="unit">status</span>';
       return;
     }
     if (typeof data.remainingSeconds === 'number') {
@@ -117,7 +247,7 @@ async function checkStatus() {
     isOnline = !!data.online;
     renderRemaining();
   } catch (e) {
-    remainingEl.textContent = 'Eroare de retea la verificarea statusului.';
+    remainingEl.innerHTML = 'eroare<span class="unit">retea</span>';
   }
 }
 
