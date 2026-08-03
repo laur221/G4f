@@ -157,8 +157,8 @@
 
     <div class="actions">
       <button class="pwr-btn pwr-start" id="start" onclick="run('start')">▶ PORNESTE</button>
-      <button class="pwr-btn pwr-restart" id="restart" onclick="run('restart')">⟳ RESTART</button>
-      <button class="pwr-btn pwr-stop" id="stop" onclick="run('stop')">■ OPRESTE</button>
+      <button class="pwr-btn pwr-restart" id="restart" onclick="run('restart')" style="display:none;">⟳ RESTART</button>
+      <button class="pwr-btn pwr-stop" id="stop" onclick="run('stop')" style="display:none;">■ OPRESTE</button>
     </div>
 
     <div id="status"></div>
@@ -193,6 +193,12 @@ function renderRemaining() {
   pill.classList.toggle('online', isOnline);
   pill.classList.toggle('offline', !isOnline);
   label.textContent = isOnline ? 'ONLINE' : 'OFFLINE';
+
+  // La fel ca pe consola reala Gaming4Free: cand serverul e ONLINE se arata
+  // doar Restart + Stop; cand e OFFLINE se arata doar Start.
+  document.getElementById('start').style.display   = isOnline ? 'none' : 'flex';
+  document.getElementById('restart').style.display = isOnline ? 'flex' : 'none';
+  document.getElementById('stop').style.display    = isOnline ? 'flex' : 'none';
 
   if (localSeconds === null) {
     remainingEl.innerHTML = '--:--:--<span class="unit">ramase</span>';
@@ -238,6 +244,7 @@ async function checkStatus() {
     const res = await fetch('/api/status');
     const data = await res.json();
     if (!data.ok) {
+      document.getElementById('status').textContent = 'Eroare status: ' + (data.error || 'necunoscuta');
       remainingEl.innerHTML = 'eroare<span class="unit">status</span>';
       return;
     }
@@ -252,7 +259,10 @@ async function checkStatus() {
 }
 
 checkStatus();
-setInterval(checkStatus, 60000); // resincronizare cu serverul la fiecare minut
+setInterval(checkStatus, 20000); // verificare mai deasa a starii online/offline
+// Nota: raspunsul e oricum cache-uit ~4 min pe server (lib/status.js), deci
+// aceasta verificare mai deasa nu deschide Chromium mai des decat atat —
+// doar arata mai rapid schimbarile catre dashboard.
 </script>
 </body>
 </html>
