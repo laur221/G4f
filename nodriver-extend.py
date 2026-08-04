@@ -1,21 +1,24 @@
 #!/usr/bin/env python3
 """
-Serviciu de extindere "+90 min" bazat pe nodriver (bypass Cloudflare/Turnstile).
+Serviciu automat de extindere "+90 min" bazat pe nodriver (G4F console).
 
-Diferenta fata de varianta Playwright (lib/browser.js):
-  - nodriver nu seteaza flagul navigator.webdriver si are evaziune mai buna,
-    deci Cloudflare Turnstile are mai multe sanse sa treaca fara interventie.
-  - Ruleaza headless pe Render cu sandbox=False (Render ruleaza ca root).
+Logica (asemanatoare cu lib/automation/auto-extend.js):
+  - citeste timpul ramas din consola (.time span)
+  - daca timpul >= TARGET_SECONDS  -> target atins, nu apasa
+  - daca timpul <  TARGET_SECONDS  -> apasa +90 min (respectand COOLDOWN_SEC)
+  - plus incercare gratuita de rezolvare Turnstile: click pe checkbox-ul din iframe
 
-Configurare (env):
-  SERVER_CONSOLE_URL           - URL consola (default: cel din .env.example)
-  STORAGE_STATE_B64            - base64(storageState.json) cu cookie-uri G4F
-                                 (daca lipseste, citim storageState.json local)
-  NODRIVER_HEADLESS            - "true"/"false" (default true)
-  NODRIVER_BROWSER_PATH        - cale executabil Chromium (default auto)
-  CHECK_INTERVAL_SEC           - interval intre verificari (default 300)
-  TARGET_SECONDS / BACKUP_SECONDS - si aici ca la auto-extend.js
-  ONESHOT                      - "true" = o singura extindere apoi iesire
+Configurare (env) — valorile de timp accepta secunde simple SAU "H:MM" / "H:MM:SS":
+  SERVER_CONSOLE_URL    - URL consola
+  STORAGE_STATE_B64     - base64(storageState.json) cu cookie-uri G4F
+                          (daca lipseste, citim storageState.json local)
+  TARGET_SECONDS        - timpul pana la care ridicam (default "12:00:00")
+  BACKUP_SECONDS        - pragul de pornire/urgenta (default "02:00:00")
+  CHECK_INTERVAL_SEC    - cat de des citim timpul (default 60)
+  COOLDOWN_SEC          - pauza intre apasari (default 300 = 5 min)
+  ONESHOT               - "true" = o singura extindere apoi iesire
+  NODRIVER_HEADLESS     - "true"/"false" (default true)
+  NODRIVER_BROWSER_PATH - cale executabil Chromium (default auto)
 """
 
 import asyncio
@@ -29,22 +32,50 @@ from datetime import datetime
 
 import nodriver as uc
 
+
+def log(msg):
+    try:
+        print(f"[{datetime.now().isoformat()}] {msg}", flush=True)
+    except UnicodeEncodeError:
+        safe = msg.encode("ascii", "replace").decode("ascii")
+        print(f"[{datetime.now().isoformat()}] {safe}", flush=True)
+
+
+def parse_env_duration(name, default):
+    """Citeste env care poate fi secunde intregi sau "H:MM" / "H:MM:SS"."""
+    raw = os.environ.get(name, default)
+    try:
+        return int(raw)
+    except ValueError:
+        pass
+    try:
+        parts = raw.strip().split(":")
+        nums = [int(p) for p in parts]
+        if len(nums) == 3:
+            return nums[0] * 3600 + nums[1] * 60 + nums[2]
+        if len(nums) == 2:
+            return nums[0] * 3600 + nums[1] * 60
+        if len(nums) == 1:
+            return nums[0] * 3600
+    except (ValueError, TypeError):
+        pass
+    log(f"Valoare invalida pentru {name}: {raw!r} -> folosesc {default}")
+    return int(default)
+
+
 CONSOLE_URL = os.environ.get(
     "SERVER_CONSOLE_URL",
     "https://control.gaming4free.net/server/48709f0f/console",
 )
 HEADLESS = os.environ.get("NODRIVER_HEADLESS", "true").lower() == "true"
 NODRIVER_BROWSER_PATH = os.environ.get("NODRIVER_BROWSER_PATH") or None
-CHECK_INTERVAL_SEC = int(os.environ.get("CHECK_INTERVAL_SEC", "300"))
-TARGET_SECONDS = int(os.environ.get("TARGET_SECONDS", "43200"))
-BACKUP_SECONDS = int(os.environ.get("BACKUP_SECONDS", "7200"))
+CHECK_INTERVAL_SEC = int(os.environ.get("CHECK_INTERVAL_SEC", "60"))
+TARGET_SECONDS = parse_env_duration("TARGET_SECONDS", "12:00:00")
+BACKUP_SECONDS = parse_env_duration("BACKUP_SECONDS", "02:00:00")
+COOLDOWN_SEC = int(os.environ.get("COOLDOWN_SEC", "300"))
 ONESHOT = os.environ.get("ONESHOT", "false").lower() == "true"
 
 PROFILE_DIR = tempfile.mkdtemp(prefix="uc-nodriver-")
-
-
-def log(msg):
-    print(f"[{datetime.now().isoformat()}] {msg}", flush=True)
 
 
 def load_storage_state():
@@ -105,9 +136,9 @@ async def inject_cookies(tab, cookies):
         cdomain = c.get("domain", "")
         if not (cdomain.endswith(base_domain) or domain in cdomain):
             continue
-        # Cookie-urile de sesiune au expires=-1 in storageState; le trimitem fara expires
-        expires = c.get("expires", -1)
-        expires_param = expires if (isinstance(expires, (int, float)) and expires > 0) else None
+        # Session cookies (expires=None) — Laravel/G4F le accepta; altfel
+        # serializarea CDP din nodriver pică cu "X has no attribute 'to_json'".
+        expires_param = None
         try:
             await tab.send(
                 cdp.network.set_cookie(
@@ -130,7 +161,58 @@ async def inject_cookies(tab, cookies):
     await tab.send(cdp.network.disable())
 
 
+async def try_click_turnstile(tab):
+    """Incercare gratuita: click pe checkbox-ul Turnstile din iframe."""
+    try:
+        async def _click():
+            frame = await tab.select("#g4f-ts-widget iframe", timeout=2000)
+            if frame is not None:
+                await frame.mouse_click(10, 10)
+                return True
+            return False
+        clicked = await asyncio.wait_for(_click(), timeout=5)
+        if clicked:
+            log("  -> Click pe checkbox Turnstile (iframe).")
+        return clicked
+    except Exception as e:
+        log(f"  -> Click Turnstile esuat: {e}")
+        return False
+
+
+async def close_turnstile(tab):
+    try:
+        await tab.evaluate("typeof g4fCloseTurnstile === 'function' && g4fCloseTurnstile()")
+    except Exception:
+        pass
+
+
+async def read_time(browser):
+    """Deschide tab, citeste timpul ramas, inchide. Returneaza secunde sau None."""
+    tab = None
+    try:
+        tab = await browser.get(CONSOLE_URL, new_window=True)
+        await tab.sleep(4)
+        if "/login" in tab.url or "accounts.google.com" in tab.url:
+            log(f"⚠️  Sesiune invalida -> URL: {tab.url}")
+            return None
+        time_el = await tab.select(".time span", timeout=15000)
+        if not time_el:
+            log("⚠️  .time span nu a aparut.")
+            return None
+        text = time_el.text
+        seconds = parse_hms(text)
+        log(f"Timp: {text.strip() if text else 'N/A'} ({seconds}s)")
+        return seconds
+    finally:
+        if tab is not None:
+            try:
+                await tab.close()
+            except Exception:
+                pass
+
+
 async def do_extend(browser):
+    """Apasa +90 min si incearca Turnstile. Returneaza True daca timpul a crescut."""
     tab = None
     try:
         tab = await browser.get(CONSOLE_URL, new_window=True)
@@ -146,7 +228,7 @@ async def do_extend(browser):
             await tab.sleep(3)
             time_el = await tab.select(".time span", timeout=10000)
 
-        before_text = await time_el.text() if time_el else None
+        before_text = time_el.text if time_el else None
         before_seconds = parse_hms(before_text)
         log(f"Timp inainte: {before_text.strip() if before_text else 'N/A'} ({before_seconds}s)")
 
@@ -155,13 +237,17 @@ async def do_extend(browser):
             log("⚠️  Buton .rt-btn-free nu a aparut.")
             return False
 
-        btn_state = await tab.evaluate(
-            "(() => { const b = document.querySelector('.rt-btn-free');"
+        btn_state_raw = await tab.evaluate(
+            "JSON.stringify((() => { const b = document.querySelector('.rt-btn-free');"
             " if (!b) return null;"
             " const span = b.querySelector('span');"
             " return { text: span ? span.textContent.trim() : b.textContent.trim(),"
-            "  disabled: b.disabled === true || b.classList.contains('disabled') || b.getAttribute('aria-disabled') === 'true' }; })()"
+            "  disabled: b.disabled === true || b.classList.contains('disabled') || b.getAttribute('aria-disabled') === 'true' }; })())"
         )
+        try:
+            btn_state = json.loads(btn_state_raw) if btn_state_raw else None
+        except (TypeError, json.JSONDecodeError):
+            btn_state = None
         btn_text = (btn_state or {}).get("text", "")
         is_disabled = bool((btn_state or {}).get("disabled"))
         log(f"Buton: \"{btn_text}\" disabled={is_disabled}")
@@ -174,14 +260,18 @@ async def do_extend(browser):
         log("Click pe +90 min. Asteptam raspunsul...")
 
         extended = False
+        turnstile_clicked = False
         start = time.time()
         for i in range(15):  # ~45s
             await tab.sleep(3)
             ts_widget = await tab.select("#g4f-ts-widget", timeout=2000)
             ts_visible = ts_widget is not None
 
+            if ts_visible and not turnstile_clicked:
+                turnstile_clicked = await try_click_turnstile(tab)
+
             cur_el = await tab.select(".time span", timeout=5000)
-            cur_text = await cur_el.text() if cur_el else None
+            cur_text = cur_el.text if cur_el else None
             cur_seconds = parse_hms(cur_text)
 
             log(f"  check #{i + 1}: turnstile={ts_visible} "
@@ -193,11 +283,9 @@ async def do_extend(browser):
                 log(f"✅ EXTINDERE REUSITA! +{round((cur_seconds - before_seconds) / 60)} min.")
                 break
 
-            if ts_visible and i >= 5:
-                log("  Turnstile inca vizibil dupa ~18s — nodriver nu l-a auto-rezolvat.")
-
         if not extended:
-            log("❌ Timpul nu a crescut. Salvam screenshot pentru debug.")
+            log("❌ Timpul nu a crescut.")
+            await close_turnstile(tab)
             try:
                 ts = time.strftime("%Y%m%d-%H%M%S")
                 await tab.save_screenshot(f"/tmp/g4f-extend-failed-{ts}.png")
@@ -218,6 +306,7 @@ async def main():
     log(f"nodriver {uc.__version__} pornit. headless={HEADLESS}")
     log(f"Console URL: {CONSOLE_URL}")
     log(f"Target: {format_hms(TARGET_SECONDS)} / Backup: {format_hms(BACKUP_SECONDS)}")
+    log(f"Cooldown intre apasari: {COOLDOWN_SEC}s / Check la fiecare {CHECK_INTERVAL_SEC}s")
 
     cookies = load_storage_state()
 
@@ -227,6 +316,9 @@ async def main():
         user_data_dir=PROFILE_DIR,
         browser_executable_path=NODRIVER_BROWSER_PATH,
         browser_args=[
+            "--no-sandbox",
+            "--disable-gpu",
+            "--disable-dev-shm-usage",
             "--disable-blink-features=AutomationControlled",
             "--no-first-run",
             "--disable-extensions",
@@ -235,8 +327,7 @@ async def main():
     )
     log("Browser pornit.")
 
-    # Primul tab il folosim pentru injectarea cookie-urilor pe domeniul tinta,
-    # apoi il inchidem (do_extend deschide tab-uri noi).
+    # Primul tab: injectare cookie-uri pe domeniul tinta, apoi inchidere.
     seed = await browser.get(CONSOLE_URL, new_window=True)
     try:
         await inject_cookies(seed, cookies)
@@ -252,12 +343,32 @@ async def main():
         await browser.stop()
         sys.exit(0)
 
-    log(f"Loop pornit. Verific la fiecare {CHECK_INTERVAL_SEC}s.")
+    log("Loop automat pornit.")
+    last_extend_at = 0.0
     while True:
         try:
-            await do_extend(browser)
+            remaining = await read_time(browser)
+
+            if remaining is None:
+                log("Nu am putut citi timpul. Reincerc la urmatorul ciclu.")
+            elif remaining >= TARGET_SECONDS:
+                log(f"✅ Target atins: {format_hms(remaining)} >= {format_hms(TARGET_SECONDS)}. Nu apasam.")
+            else:
+                cooldown_left = last_extend_at + COOLDOWN_SEC - time.time()
+                if cooldown_left > 0:
+                    log(f"⏳ Cooldown activ — mai asteptam {int(cooldown_left)}s.")
+                else:
+                    if remaining < BACKUP_SECONDS:
+                        log(f"🚨 BACKUP! Timp critic: {format_hms(remaining)} (< {format_hms(BACKUP_SECONDS)}).")
+                    else:
+                        log(f"⏰ Timp sub target: {format_hms(remaining)} / {format_hms(TARGET_SECONDS)}.")
+                    log("Apasam +90 min...")
+                    ok = await do_extend(browser)
+                    last_extend_at = time.time()
+                    log(f"Rezultat extindere: {'OK' if ok else 'esec'}")
         except Exception as e:
-            log(f"Eroare in do_extend: {e}")
+            log(f"Eroare in loop: {e}")
+
         try:
             for _ in range(CHECK_INTERVAL_SEC):
                 await asyncio.sleep(1)

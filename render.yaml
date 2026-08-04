@@ -46,10 +46,12 @@ services:
       - key: NODRIVER_BROWSER_PATH
         value: /usr/bin/chromium
       - key: CHECK_INTERVAL_SEC
-        value: "300"
+        value: "60"
       - key: TARGET_SECONDS
-        value: "43200"
+        value: "12:00:00"
       - key: BACKUP_SECONDS
-        value: "7200"
+        value: "02:00:00"
+      - key: COOLDOWN_SEC
+        value: "300"
       - key: ONESHOT
         value: "false"
