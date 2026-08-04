@@ -290,18 +290,6 @@
       </div>
     </div>
 
-    <!-- ── Manual extend ── -->
-    <div class="extend-row" id="manual-extend-row" style="margin-top:12px;">
-      <div style="display:flex;gap:6px;align-items:center;justify-content:center;">
-        <input type="number" id="manual-minutes" value="90" min="1" max="9999"
-          style="width:70px;padding:6px 8px;border-radius:6px;border:1px solid var(--line);background:rgba(0,0,0,.3);color:var(--ink);font-family:var(--mono);font-size:12px;text-align:center;">
-        <span style="font-size:9px;color:var(--ink-muted);">min</span>
-        <button onclick="manualExtend()" style="padding:6px 14px;border-radius:7px;border:2px solid rgba(251,191,36,.45);color:var(--gold);background:rgba(251,191,36,.08);cursor:pointer;font-family:var(--pixel);font-size:8px;letter-spacing:.08em;">
-          EXTINDE ACUM
-        </button>
-      </div>
-    </div>
-
     <!-- ── Test mode ── -->
     <div class="res-panel show" id="test-mode-panel" style="margin-top:16px;">
       <div class="res-panel-head">
@@ -474,39 +462,6 @@ async function autoExtend() {
     btn.textContent = '+ 90 MIN (AUTO)';
     btn.disabled = false;
   }
-}
-
-// Extindere manuală cu minute personalizate
-async function manualExtend() {
-  const btn = document.querySelector('#manual-extend-row button');
-  const input = document.getElementById('manual-minutes');
-  const statusEl = document.getElementById('status');
-  const minutes = parseInt(input.value) || 90;
-
-  btn.disabled = true;
-  btn.textContent = '...';
-  statusEl.textContent = `Extindere manuală: +${minutes} min...`;
-
-  try {
-    const res = await fetch('/api/extend', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ minutes }),
-    });
-    const data = await res.json();
-
-    if (data.ok) {
-      statusEl.textContent = `Extindere manuală reușită! +${data.addedMinutes || minutes} min.`;
-    } else {
-      statusEl.textContent = 'Eroare: ' + (data.error || 'necunoscută');
-    }
-  } catch (e) {
-    statusEl.textContent = 'Eroare de retea la extinderea manuală.';
-  }
-
-  btn.textContent = 'EXTINDE ACUM';
-  btn.disabled = false;
-  setTimeout(checkStatus, 2000);
 }
 
 // ── Test mode ──

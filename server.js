@@ -153,6 +153,7 @@ app.post('/api/auto-extend/config', requireAuth, async (req, res) => {
     ok: true,
     targetSeconds: CONFIG.targetSeconds,
     backupSeconds: CONFIG.backupSeconds,
+    isRunning: require('./lib/automation/auto-extend').isRunning(),
   });
 });
 
