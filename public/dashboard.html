@@ -347,7 +347,12 @@ async function extend() {
 }
 
 // Sincronizare periodica cu serverul
+let statusCheckInFlight = false;
+
 async function checkStatus() {
+  if (statusCheckInFlight) return; // o verificare e deja in desfasurare — nu suprapunem
+  statusCheckInFlight = true;
+
   const remainingEl = document.getElementById('remaining');
   try {
     const res = await fetch('/api/status');
@@ -365,6 +370,8 @@ async function checkStatus() {
     renderResources(data.resources);
   } catch (e) {
     remainingEl.innerHTML = 'eroare<span class="unit">retea</span>';
+  } finally {
+    statusCheckInFlight = false;
   }
 }
 
