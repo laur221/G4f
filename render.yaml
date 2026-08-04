@@ -30,3 +30,26 @@ services:
         value: "false"
       - key: AUTO_EXTEND_TEST_REMAINING
         value: "0"
+
+  - type: worker
+    name: g4f-nodriver-extender
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile.nodriver
+    envVars:
+      - key: SERVER_CONSOLE_URL
+        value: https://control.gaming4free.net/server/48709f0f/console
+      - key: STORAGE_STATE_B64
+        sync: false
+      - key: NODRIVER_HEADLESS
+        value: "true"
+      - key: NODRIVER_BROWSER_PATH
+        value: /usr/bin/chromium
+      - key: CHECK_INTERVAL_SEC
+        value: "300"
+      - key: TARGET_SECONDS
+        value: "43200"
+      - key: BACKUP_SECONDS
+        value: "7200"
+      - key: ONESHOT
+        value: "false"
