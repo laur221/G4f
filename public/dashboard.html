@@ -250,7 +250,7 @@
     </div>
 
     <!-- ── Auto-extend settings ── -->
-    <div class="res-panel" id="auto-extend-panel" style="margin-top:16px;">
+    <div class="res-panel show" id="auto-extend-panel" style="margin-top:16px;">
       <div class="res-panel-head">
         <span class="res-panel-title">AUTO-EXTEND</span>
         <span class="res-live" id="ae-status">—</span>
@@ -270,6 +270,44 @@
       <button onclick="saveAutoExtendConfig()" style="width:100%;padding:8px;border-radius:7px;border:2px solid rgba(163,230,53,.45);color:var(--lime);background:rgba(163,230,53,.08);cursor:pointer;font-family:var(--pixel);font-size:8px;letter-spacing:.08em;">
         SALVEAZĂ CONFIGURAȚIE
       </button>
+    </div>
+
+    <!-- ── Manual extend ── -->
+    <div class="extend-row" id="manual-extend-row" style="margin-top:12px;">
+      <div style="display:flex;gap:6px;align-items:center;justify-content:center;">
+        <input type="number" id="manual-minutes" value="90" min="1" max="9999"
+          style="width:70px;padding:6px 8px;border-radius:6px;border:1px solid var(--line);background:rgba(0,0,0,.3);color:var(--ink);font-family:var(--mono);font-size:12px;text-align:center;">
+        <span style="font-size:9px;color:var(--ink-muted);">min</span>
+        <button onclick="manualExtend()" style="padding:6px 14px;border-radius:7px;border:2px solid rgba(251,191,36,.45);color:var(--gold);background:rgba(251,191,36,.08);cursor:pointer;font-family:var(--pixel);font-size:8px;letter-spacing:.08em;">
+          EXTINDE ACUM
+        </button>
+      </div>
+    </div>
+
+    <!-- ── Test mode ── -->
+    <div class="res-panel show" id="test-mode-panel" style="margin-top:16px;">
+      <div class="res-panel-head">
+        <span class="res-panel-title">TEST MODE</span>
+        <span class="res-live" id="test-mode-status">○ INACTIV</span>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
+        <div style="flex:1;min-width:100px;">
+          <label style="font-size:9px;color:var(--ink-muted);display:block;margin-bottom:4px;">Simulare timp rămas (sec)</label>
+          <input type="number" id="test-remaining" value="7200" min="0" max="86400"
+            style="width:100%;padding:6px 8px;border-radius:6px;border:1px solid var(--line);background:rgba(0,0,0,.3);color:var(--ink);font-family:var(--mono);font-size:12px;">
+        </div>
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;">
+        <button onclick="toggleTestMode()" style="flex:1;padding:8px;border-radius:7px;border:2px solid rgba(251,191,36,.45);color:var(--gold);background:rgba(251,191,36,.08);cursor:pointer;font-family:var(--pixel);font-size:8px;letter-spacing:.08em;">
+          ACTIVARE TEST
+        </button>
+        <button onclick="setTestRemaining()" style="flex:1;padding:8px;border-radius:7px;border:2px solid rgba(163,230,53,.45);color:var(--lime);background:rgba(163,230,53,.08);cursor:pointer;font-family:var(--pixel);font-size:8px;letter-spacing:.08em;">
+          SETEAZĂ TIMP
+        </button>
+        <button onclick="testExtend()" style="flex:1;padding:8px;border-radius:7px;border:2px solid rgba(39,225,255,.45);color:var(--cyan);background:rgba(39,225,255,.08);cursor:pointer;font-family:var(--pixel);font-size:8px;letter-spacing:.08em;">
+          EXTINDE TEST
+        </button>
+      </div>
     </div>
 
     <div class="logout-row">
@@ -418,6 +456,125 @@ async function autoExtend() {
     btn.textContent = '+ 90 MIN (AUTO)';
     btn.disabled = false;
   }
+}
+
+// Extindere manuală cu minute personalizate
+async function manualExtend() {
+  const btn = document.querySelector('#manual-extend-row button');
+  const input = document.getElementById('manual-minutes');
+  const statusEl = document.getElementById('status');
+  const minutes = parseInt(input.value) || 90;
+
+  btn.disabled = true;
+  btn.textContent = '...';
+  statusEl.textContent = `Extindere manuală: +${minutes} min...`;
+
+  try {
+    const res = await fetch('/api/extend', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ minutes }),
+    });
+    const data = await res.json();
+
+    if (data.ok) {
+      statusEl.textContent = `Extindere manuală reușită! +${data.addedMinutes || minutes} min.`;
+    } else {
+      statusEl.textContent = 'Eroare: ' + (data.error || 'necunoscută');
+    }
+  } catch (e) {
+    statusEl.textContent = 'Eroare de retea la extinderea manuală.';
+  }
+
+  btn.textContent = 'EXTINDE ACUM';
+  btn.disabled = false;
+  setTimeout(checkStatus, 2000);
+}
+
+// ── Test mode ──
+async function toggleTestMode() {
+  const statusEl = document.getElementById('test-mode-status');
+  const btn = event.target;
+  btn.disabled = true;
+  btn.textContent = '...';
+
+  try {
+    const res = await fetch('/api/auto-extend/test-mode', {
+      method: 'GET',
+    });
+    const data = await res.json();
+
+    const currentlyEnabled = data.testMode;
+    const newState = !currentlyEnabled;
+
+    const setRes = await fetch('/api/auto-extend/test-mode', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: newState }),
+    });
+    const setData = await setRes.json();
+
+    if (setData.ok) {
+      statusEl.textContent = setData.testMode ? '● ACTIV' : '○ INACTIV';
+      statusEl.style.color = setData.testMode ? 'var(--gold)' : 'var(--ink-muted)';
+      btn.textContent = setData.testMode ? 'DEZACTIVARE TEST' : 'ACTIVARE TEST';
+    }
+  } catch (e) {
+    statusEl.textContent = '❌ Eroare';
+  }
+
+  btn.disabled = false;
+}
+
+async function setTestRemaining() {
+  const input = document.getElementById('test-remaining');
+  const seconds = parseInt(input.value) || 0;
+  const btn = event.target;
+  btn.disabled = true;
+  btn.textContent = '...';
+
+  try {
+    const res = await fetch('/api/auto-extend/test-set-remaining', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ seconds }),
+    });
+    const data = await res.json();
+
+    if (data.ok) {
+      btn.textContent = 'SETAT ✓';
+      setTimeout(() => { btn.textContent = 'SETEAZĂ TIMP'; }, 2000);
+    }
+  } catch (e) {
+    btn.textContent = 'EROARE';
+  }
+
+  btn.disabled = false;
+}
+
+async function testExtend() {
+  const btn = event.target;
+  btn.disabled = true;
+  btn.textContent = '...';
+  const statusEl = document.getElementById('status');
+  statusEl.textContent = 'Extindere test în curs...';
+
+  try {
+    const res = await fetch('/api/auto-extend/test-extend', { method: 'POST' });
+    const data = await res.json();
+
+    if (data.ok) {
+      statusEl.textContent = 'Extindere test reușită! +' + (data.addedMinutes || 90) + ' min.';
+    } else {
+      statusEl.textContent = 'Eroare extindere test: ' + (data.error || 'necunoscută');
+    }
+  } catch (e) {
+    statusEl.textContent = 'Eroare de retea la extinderea test.';
+  }
+
+  btn.textContent = 'EXTINDE TEST';
+  btn.disabled = false;
+  setTimeout(checkStatus, 2000);
 }
 
 // Sincronizare periodica cu serverul
@@ -569,12 +726,15 @@ async function saveAutoExtendConfig() {
 
 // Încarcă configurația la pornire
 loadAutoExtendConfig();
+loadTestModeConfig();
 
 checkStatus();
 // Verifică statusul la fiecare 5 minute
 setInterval(checkStatus, 5 * 60 * 1000);
 // Reîncarcă configurația la fiecare 5 minute
 setInterval(loadAutoExtendConfig, 5 * 60 * 1000);
+// Reîncarcă test mode la fiecare 5 minute
+setInterval(loadTestModeConfig, 5 * 60 * 1000);
 
 // Menține localSeconds sincronizat continuu (scade cate o secunda)
 setInterval(() => {
@@ -583,6 +743,25 @@ setInterval(() => {
     renderRemaining();
   }
 }, 1000);
+
+// ── Load test mode config ──
+async function loadTestModeConfig() {
+  try {
+    const res = await fetch('/api/auto-extend/test-mode');
+    const data = await res.json();
+    if (data.ok) {
+      const statusEl = document.getElementById('test-mode-status');
+      statusEl.textContent = data.testMode ? '● ACTIV' : '○ INACTIV';
+      statusEl.style.color = data.testMode ? 'var(--gold)' : 'var(--ink-muted)';
+      const btn = document.querySelector('#test-mode-panel button');
+      if (btn) btn.textContent = data.testMode ? 'DEZACTIVARE TEST' : 'ACTIVARE TEST';
+      const input = document.getElementById('test-remaining');
+      if (input && data.testRemainingSeconds > 0) input.value = data.testRemainingSeconds;
+    }
+  } catch (e) {
+    // ignore
+  }
+}
 </script>
 </body>
 </html>

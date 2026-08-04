@@ -24,7 +24,7 @@ if (process.env.STORAGE_STATE_B64) {
 const { verifyCredentials } = require('./lib/auth');
 const { runAction, extendServer } = require('./lib/browser');
 const { getCachedStatus, invalidate } = require('./lib/status');
-const { startAutoExtend, stopAutoExtend, setTarget, setBackup, CONFIG } = require('./lib/automation/auto-extend');
+const { startAutoExtend, stopAutoExtend, setTarget, setBackup, CONFIG, setTestMode, setTestRemaining } = require('./lib/automation/auto-extend');
 
 const app = express();
 app.use(express.urlencoded({ extended: true }));
@@ -91,9 +91,11 @@ app.post('/api/action/:action', requireAuth, async (req, res) => {
 });
 
 // ── Extindere +90 min (cu Turnstile auto-rezolvare) ──
+// Acceptă și parametri opționali pentru extindere manuală cu minute personalizate
 app.post('/api/extend', requireAuth, async (req, res) => {
+  const minutes = parseInt(req.body?.minutes, 10) || 90;
   try {
-    const result = await extendServer();
+    const result = await extendServer(minutes);
     if (result.ok) invalidate(); // forteaza refresh la status dupa extindere
     res.json(result);
   } catch (err) {
@@ -138,6 +140,44 @@ app.post('/api/auto-extend/config', requireAuth, async (req, res) => {
     targetSeconds: CONFIG.targetSeconds,
     backupSeconds: CONFIG.backupSeconds,
   });
+});
+
+// ── Test mode endpoints ──
+app.get('/api/auto-extend/test-mode', requireAuth, (req, res) => {
+  res.json({
+    ok: true,
+    testMode: CONFIG.testMode,
+    testRemainingSeconds: CONFIG.testRemainingSeconds,
+  });
+});
+
+app.post('/api/auto-extend/test-mode', requireAuth, async (req, res) => {
+  const { enabled, remainingSeconds } = req.body || {};
+  setTestMode(enabled === true, remainingSeconds || 0);
+  res.json({
+    ok: true,
+    testMode: CONFIG.testMode,
+    testRemainingSeconds: CONFIG.testRemainingSeconds,
+  });
+});
+
+app.post('/api/auto-extend/test-set-remaining', requireAuth, async (req, res) => {
+  const { seconds } = req.body || {};
+  setTestRemaining(parseInt(seconds, 10) || 0);
+  res.json({
+    ok: true,
+    testRemainingSeconds: CONFIG.testRemainingSeconds,
+  });
+});
+
+// ── Manual extend trigger (for testing) ──
+app.post('/api/auto-extend/test-extend', requireAuth, async (req, res) => {
+  try {
+    const result = await extendServer();
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
 });
 
 // ── Health check (folosit si de self-ping-ul anti-sleep) ──
