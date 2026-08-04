@@ -28,6 +28,8 @@ import os
 import sys
 import tempfile
 import time
+import urllib.parse
+import urllib.request
 from datetime import datetime
 
 import nodriver as uc
@@ -74,8 +76,31 @@ TARGET_SECONDS = parse_env_duration("TARGET_SECONDS", "12:00:00")
 BACKUP_SECONDS = parse_env_duration("BACKUP_SECONDS", "02:00:00")
 COOLDOWN_SEC = int(os.environ.get("COOLDOWN_SEC", "300"))
 ONESHOT = os.environ.get("ONESHOT", "false").lower() == "true"
+CAPTCHA_API_KEY = os.environ.get("CAPTCHA_API_KEY", "").strip()
+CAPTCHA_PROVIDER = os.environ.get("CAPTCHA_PROVIDER", "2captcha").strip().lower()
 
 PROFILE_DIR = tempfile.mkdtemp(prefix="uc-nodriver-")
+
+REAL_CHROME_UA = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+)
+
+
+async def human_click(tab, element, jitter=3):
+    """Mișcare de mouse reală spre buton + click cu delay natural."""
+    import random
+
+    try:
+        await element.mouse_move()
+        await tab.sleep(random.uniform(0.15, 0.45))
+        # mici devieri în jurul centrului ca un om
+        dx = random.randint(-jitter, jitter)
+        dy = random.randint(-jitter, jitter)
+        await element.mouse_click(dx, dy)
+    except AttributeError:
+        await element.click()
+    return True
 
 
 def load_storage_state():
@@ -179,11 +204,229 @@ async def try_click_turnstile(tab):
         return False
 
 
+async def get_turnstile_token(tab):
+    """Citeste token-ul Turnstile rezolvat (din getResponse / input ascuns)."""
+    try:
+        res = await tab.evaluate(
+            "JSON.stringify((() => {"
+            " const w = window._g4fTsWidgetId;"
+            " let tok = null;"
+            " if (w !== null && typeof turnstile !== 'undefined') {"
+            "   try { tok = turnstile.getResponse(w); } catch(e) { tok = 'ERR:' + e.message; }"
+            " }"
+            " if (!tok) {"
+            "   const inp = document.querySelector('input[name=\"cf-turnstile-response\"], #g4f-ts-widget input[type=\"hidden\"]');"
+            "   if (inp) tok = inp.value;"
+            " }"
+            " return { widgetId: w, token: tok, "
+            "   iframe: (document.querySelector('#g4f-ts-widget iframe')||{}).src || null }; })())"
+        )
+        return json.loads(res) if res else None
+    except Exception as e:
+        log(f"  -> Eroare citire token: {e}")
+        return None
+
+
+async def extract_sitekey(tab):
+    """Extrage sitekey-ul Turnstile din scriptul inline G4F."""
+    try:
+        res = await tab.evaluate(
+            "(() => { const s = [...document.scripts].filter(x => (x.textContent||'').includes('turnstile.render'))[0];"
+            " const m = s ? s.textContent.match(/sitekey:\\s*'([^']+)'/) : null; return m ? m[1] : null; })()"
+        )
+        return res
+    except Exception:
+        return None
+
+
+def http_get(url, timeout=20):
+    with urllib.request.urlopen(url, timeout=timeout) as r:
+        return r.read().decode("utf-8", "replace")
+
+
+def http_post(url, data, timeout=20):
+    body = urllib.parse.urlencode(data).encode("utf-8")
+    req = urllib.request.Request(url, data=body)
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return r.read().decode("utf-8", "replace")
+
+
+async def solve_turnstile_2captcha(sitekey, page_url):
+    """Rezolva Turnstile prin 2Captcha si returneaza token-ul (sau None)."""
+    if not CAPTCHA_API_KEY:
+        log("  -> CAPTCHA_API_KEY lipseste; sarim peste solver.")
+        return None
+    try:
+        log(f"  -> Trimitem Turnstile la 2Captcha (sitekey={sitekey})...")
+        resp = http_post("https://2captcha.com/in.php", {
+            "key": CAPTCHA_API_KEY,
+            "method": "turnstile",
+            "sitekey": sitekey,
+            "pageurl": page_url,
+            "json": 1,
+        })
+        try:
+            submit = json.loads(resp)
+        except json.JSONDecodeError:
+            log(f"  -> Raspuns 2Captcha ne-JSON: {resp[:120]}")
+            return None
+        if submit.get("status") != 1:
+            log(f"  -> 2Captcha submit esuat: {submit.get('request', submit)}")
+            return None
+        task_id = submit["request"]
+        log(f"  -> 2Captcha task id: {task_id}. Asteptam rezolvarea...")
+        for _ in range(60):  # pana la ~5 min
+            await asyncio.sleep(5)
+            res = http_get(
+                "https://2captcha.com/res.php?"
+                + urllib.parse.urlencode({"key": CAPTCHA_API_KEY, "action": "get", "id": task_id, "json": 1})
+            )
+            try:
+                result = json.loads(res)
+            except json.JSONDecodeError:
+                log(f"  -> Raspuns poll ne-JSON: {res[:120]}")
+                continue
+            if result.get("status") == 1:
+                token = result.get("request")
+                log(f"  -> TOKEN rezolvat ({len(token)} chars).")
+                return token
+            if result.get("request") == "CAPCHA_NOT_READY":
+                continue
+            log(f"  -> 2Captcha poll: {result.get('request', result)}")
+            return None
+        log("  -> Timeout la 2Captcha (5 min).")
+        return None
+    except Exception as e:
+        log(f"  -> Eroare 2Captcha: {e}")
+        return None
+
+
+async def solve_turnstile_capsolver(sitekey, page_url):
+    """Rezolva Turnstile prin CapSolver si returneaza token-ul (sau None)."""
+    if not CAPTCHA_API_KEY:
+        return None
+    try:
+        log("  -> Trimitem Turnstile la CapSolver...")
+        req = urllib.request.Request(
+            "https://api.capsolver.com/createTask",
+            data=json.dumps({
+                "clientKey": CAPTCHA_API_KEY,
+                "task": {
+                    "type": "TurnstileTaskProxyLess",
+                    "websiteURL": page_url,
+                    "websiteKey": sitekey,
+                    "userAgent": REAL_CHROME_UA,
+                },
+            }).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=30) as r:
+            submit = json.loads(r.read().decode("utf-8", "replace"))
+        if submit.get("errorId") != 0:
+            log(f"  -> CapSolver submit esuat: {submit.get('errorDescription')}")
+            return None
+        task_id = submit["taskId"]
+        log(f"  -> CapSolver task id: {task_id}. Asteptam rezolvarea...")
+        for _ in range(60):
+            await asyncio.sleep(5)
+            req = urllib.request.Request(
+                "https://api.capsolver.com/getTaskResult",
+                data=json.dumps({"clientKey": CAPTCHA_API_KEY, "taskId": task_id}).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+            )
+            with urllib.request.urlopen(req, timeout=30) as r:
+                result = json.loads(r.read().decode("utf-8", "replace"))
+            status = result.get("status")
+            if status == "ready":
+                token = result["solution"].get("token") or result["solution"].get("gRecaptchaResponse")
+                log(f"  -> TOKEN rezolvat ({len(token)} chars).")
+                return token
+            if status == "failed":
+                log("  -> CapSolver: task failed.")
+                return None
+        log("  -> Timeout la CapSolver (5 min).")
+        return None
+    except Exception as e:
+        log(f"  -> Eroare CapSolver: {e}")
+        return None
+
+
+async def solve_turnstile(sitekey, page_url):
+    if CAPTCHA_PROVIDER == "capsolver":
+        return await solve_turnstile_capsolver(sitekey, page_url)
+    return await solve_turnstile_2captcha(sitekey, page_url)
+
+
+async def inject_turnstile_token(tab, token):
+    """Injecteaza token-ul rezolvat in callback-ul G4F (ca si cum turnstile s-ar fi rezolvat)."""
+    try:
+        js = (
+            "JSON.stringify((() => {"
+            " const cb = window._g4fTsCallback;"
+            " if (typeof cb === 'function') { cb(" + json.dumps(token) + "); return 'injected-callback'; }"
+            " const inp = document.querySelector('input[name=\"cf-turnstile-response\"]');"
+            " if (inp) {"
+            "   inp.value = " + json.dumps(token) + ";"
+            "   inp.dispatchEvent(new Event('input', {bubbles:true}));"
+            "   inp.dispatchEvent(new Event('change', {bubbles:true}));"
+            "   return 'injected-input:' + inp.name;"
+            " }"
+            " return 'no-callback-no-input'; })())"
+        )
+        res = await tab.evaluate(js)
+        log(f"  -> Injectie token: {res}")
+        return "injected" in (res or "")
+    except Exception as e:
+        log(f"  -> Eroare injectie token: {e}")
+        return False
+
+
 async def close_turnstile(tab):
     try:
         await tab.evaluate("typeof g4fCloseTurnstile === 'function' && g4fCloseTurnstile()")
     except Exception:
         pass
+
+
+async def try_webad_extend(tab, before_seconds):
+    """Calea 0 (gratuita, FARA captcha): apel direct $wire.extendWebAd().
+
+    Confirmat empiric (aug 2026): serverul NU valideaza vizionarea reclamei.
+    POST-ul Livewire adauga direct +90 min, fara token Turnstile si fara ad.
+    """
+    try:
+        res = await tab.evaluate(
+            "(async () => {"
+            " const btn = document.querySelector('.rt-btn-free');"
+            " const root = btn ? btn.closest('[wire\\\\:id]') : null;"
+            " if (!root) return JSON.stringify({ok:false,error:'root-negasit'});"
+            " if (typeof Alpine === 'undefined' || !Alpine.evaluate) return JSON.stringify({ok:false,error:'no-alpine'});"
+            " try {"
+            "   const result = await Alpine.evaluate(root, '$wire.extendWebAd()');"
+            "   return JSON.stringify({ok:true,result:String(result)});"
+            " } catch(e) { return JSON.stringify({ok:false,error:String(e.message||e)}); }"
+            " })()",
+            await_promise=True,
+        )
+        log(f"  -> Apel $wire.extendWebAd: {res}")
+        # asteptam pana la ~30s cresterea timpului
+        for _ in range(10):
+            await asyncio.sleep(3)
+            cur_el = await tab.select(".time span", timeout=3000)
+            cur_text = cur_el.text if cur_el else None
+            cur_seconds = parse_hms(cur_text)
+            if (
+                cur_seconds is not None
+                and before_seconds is not None
+                and (cur_seconds - before_seconds) > 1800
+            ):
+                log(f"  ✅ Calea 0 REUSITA! +{round((cur_seconds - before_seconds) / 60)} min.")
+                return True
+        log("  -> Calea 0 esuata; continuam cu calea A/B.")
+        return False
+    except Exception as e:
+        log(f"  -> Eroare Calea 0 (extendWebAd): {e}")
+        return False
 
 
 async def read_time(browser):
@@ -228,9 +471,16 @@ async def do_extend(browser):
             await tab.sleep(3)
             time_el = await tab.select(".time span", timeout=10000)
 
+        sitekey = await extract_sitekey(tab)
+        log(f"🔑 Sitekey Turnstile: {sitekey}")
+
         before_text = time_el.text if time_el else None
         before_seconds = parse_hms(before_text)
         log(f"Timp inainte: {before_text.strip() if before_text else 'N/A'} ({before_seconds}s)")
+
+        # Calea 0 (gratuita, FARA captcha): apel direct $wire.extendWebAd()
+        if await try_webad_extend(tab, before_seconds):
+            return True
 
         btn = await tab.select(".rt-btn-free", timeout=10000)
         if not btn:
@@ -256,11 +506,12 @@ async def do_extend(browser):
             log(f"⏳ Buton indisponibil: \"{btn_text.strip()}\" — de adaugat mai tarziu.")
             return False
 
-        await btn.click()
+        await human_click(tab, btn)
         log("Click pe +90 min. Asteptam raspunsul...")
 
         extended = False
         turnstile_clicked = False
+        solver_started = False
         start = time.time()
         for i in range(15):  # ~45s
             await tab.sleep(3)
@@ -269,6 +520,21 @@ async def do_extend(browser):
 
             if ts_visible and not turnstile_clicked:
                 turnstile_clicked = await try_click_turnstile(tab)
+
+            tok = await get_turnstile_token(tab)
+            if tok and tok.get("token"):
+                log(f"  🔓 TOKEN Turnstile capturat: {tok['token'][:60]}... (widgetId={tok.get('widgetId')})")
+            elif tok:
+                log(f"  token=None widgetId={tok.get('widgetId')} iframe={'yes' if tok.get('iframe') else 'no'}")
+
+            if ts_visible and not turnstile_clicked and not solver_started and sitekey:
+                solver_started = True
+                log("  -> Click-ul gratuit nu a rezolvat; pornim CAPTCHA solver...")
+                token = await solve_turnstile(sitekey, CONSOLE_URL)
+                if token:
+                    injected = await inject_turnstile_token(tab, token)
+                    if injected:
+                        log("  -> Token injectat; asteptam confirmarea din server...")
 
             cur_el = await tab.select(".time span", timeout=5000)
             cur_text = cur_el.text if cur_el else None
@@ -323,6 +589,7 @@ async def main():
             "--no-first-run",
             "--disable-extensions",
             "--window-size=1280,800",
+            "--user-agent=" + REAL_CHROME_UA,
         ],
     )
     log("Browser pornit.")
@@ -340,7 +607,10 @@ async def main():
 
     if ONESHOT:
         await do_extend(browser)
-        await browser.stop()
+        try:
+            await browser.stop()
+        except TypeError:
+            browser.stop()
         sys.exit(0)
 
     log("Loop automat pornit.")
