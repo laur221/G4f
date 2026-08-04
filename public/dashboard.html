@@ -249,6 +249,29 @@
       </div>
     </div>
 
+    <!-- ── Auto-extend settings ── -->
+    <div class="res-panel" id="auto-extend-panel" style="margin-top:16px;">
+      <div class="res-panel-head">
+        <span class="res-panel-title">AUTO-EXTEND</span>
+        <span class="res-live" id="ae-status">—</span>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
+        <div style="flex:1;min-width:100px;">
+          <label style="font-size:9px;color:var(--ink-muted);display:block;margin-bottom:4px;">Target (ore)</label>
+          <input type="number" id="ae-target" value="12" min="1" max="100"
+            style="width:100%;padding:6px 8px;border-radius:6px;border:1px solid var(--line);background:rgba(0,0,0,.3);color:var(--ink);font-family:var(--mono);font-size:12px;">
+        </div>
+        <div style="flex:1;min-width:100px;">
+          <label style="font-size:9px;color:var(--ink-muted);display:block;margin-bottom:4px;">Backup (ore)</label>
+          <input type="number" id="ae-backup" value="2" min="0" max="24"
+            style="width:100%;padding:6px 8px;border-radius:6px;border:1px solid var(--line);background:rgba(0,0,0,.3);color:var(--ink);font-family:var(--mono);font-size:12px;">
+        </div>
+      </div>
+      <button onclick="saveAutoExtendConfig()" style="width:100%;padding:8px;border-radius:7px;border:2px solid rgba(163,230,53,.45);color:var(--lime);background:rgba(163,230,53,.08);cursor:pointer;font-family:var(--pixel);font-size:8px;letter-spacing:.08em;">
+        SALVEAZĂ CONFIGURAȚIE
+      </button>
+    </div>
+
     <div class="logout-row">
       <form method="POST" action="/logout" style="display:inline;">
         <button type="submit">Iesire</button>
@@ -338,6 +361,14 @@ async function extend() {
     }
     btn.textContent = '+ 90 MIN (AUTO)';
     btn.disabled = false;
+    // Resetează automat când timpul revine peste 30 min
+    if (data.ok) {
+      const resetCheck = setInterval(() => {
+        if (localSeconds >= 1800) {
+          clearInterval(resetCheck);
+        }
+      }, 30000);
+    }
     setTimeout(checkStatus, 2000);
   } catch (e) {
     statusEl.textContent = 'Eroare de retea la extindere.';
@@ -346,8 +377,52 @@ async function extend() {
   }
 }
 
+// Extindere automată
+async function autoExtend() {
+  const statusEl = document.getElementById('status');
+  const btn = document.getElementById('extend-btn');
+
+  // Redă un mesaj vizibil că se extinde automat
+  statusEl.textContent = 'Extindere automată în curs...';
+  btn.textContent = '...';
+
+  try {
+    const res = await fetch('/api/extend', { method: 'POST' });
+    const data = await res.json();
+
+    if (data.ok) {
+      statusEl.textContent = 'Extindere AUTOMATĂ reusita! +' + (data.addedMinutes || 90) + ' min.';
+      // Adaugă banner de confirmare în mod vizibil
+      const banner = document.getElementById('warn-banner');
+      banner.textContent = `✓ Extindere automată: +${data.addedMinutes} min.`;
+      banner.style.background = 'rgba(163, 230, 53, 0.2)';
+      banner.style.borderColor = 'rgba(163, 230, 53, 0.6)';
+
+      setTimeout(() => {
+        banner.textContent = 'Mai sunt sub 30 de minute! Apasa butonul "+ 90 min" de mai jos pentru extindere automata.';
+        banner.style.background = 'rgba(255, 92, 108, 0.1)';
+        banner.style.borderColor = 'rgba(255, 92, 108, 0.35)';
+        statusEl.textContent = '';
+      }, 5000);
+    } else {
+      statusEl.textContent = 'Extindere AUTOMATĂ eșuată: ' + (data.error || 'necunoscuta');
+    }
+
+    btn.textContent = '+ 90 MIN (AUTO)';
+    btn.disabled = false;
+
+    // Verifică statusul după 2 secunde
+    setTimeout(checkStatus, 2000);
+  } catch (e) {
+    statusEl.textContent = 'Eroare de retea la extindere AUTOMATĂ.';
+    btn.textContent = '+ 90 MIN (AUTO)';
+    btn.disabled = false;
+  }
+}
+
 // Sincronizare periodica cu serverul
 let statusCheckInFlight = false;
+let autoExtendCooldown = false;
 
 async function checkStatus() {
   if (statusCheckInFlight) return; // o verificare e deja in desfasurare — nu suprapunem
@@ -368,6 +443,18 @@ async function checkStatus() {
     isOnline = !!data.online;
     renderRemaining();
     renderResources(data.resources);
+
+    // Extindere automată când timpul este sub 30 minute (1800 secunde)
+    if (isOnline && localSeconds < 1800 && !autoExtendCooldown) {
+      autoExtendCooldown = true;
+      try {
+        await autoExtend();
+      } catch (e) {
+        console.error('Auto-extend eroare:', e);
+      } finally {
+        autoExtendCooldown = false;
+      }
+    }
   } catch (e) {
     remainingEl.innerHTML = 'eroare<span class="unit">retea</span>';
   } finally {
@@ -433,8 +520,69 @@ function renderResources(resources) {
   drawSpark('spark-network', 'network', '#ff3aa3');
 }
 
+// ── Auto-extend settings ──
+async function loadAutoExtendConfig() {
+  try {
+    const res = await fetch('/api/auto-extend/config');
+    const data = await res.json();
+    if (data.ok) {
+      document.getElementById('ae-target').value = Math.round(data.targetSeconds / 3600);
+      document.getElementById('ae-backup').value = Math.round(data.backupSeconds / 3600);
+      document.getElementById('ae-status').textContent = data.isRunning ? '● ACTIV' : '○ INACTIV';
+      document.getElementById('ae-status').style.color = data.isRunning ? 'var(--lime)' : 'var(--ink-muted)';
+    }
+  } catch (e) {
+    // ignore
+  }
+}
+
+async function saveAutoExtendConfig() {
+  const targetHours = parseInt(document.getElementById('ae-target').value) || 12;
+  const backupHours = parseInt(document.getElementById('ae-backup').value) || 2;
+  const btn = event.target;
+  btn.textContent = '...';
+  btn.disabled = true;
+  try {
+    const res = await fetch('/api/auto-extend/config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        targetSeconds: targetHours * 3600,
+        backupSeconds: backupHours * 3600,
+      }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      document.getElementById('ae-status').textContent = '✅ Salvat';
+      document.getElementById('ae-status').style.color = 'var(--lime)';
+      setTimeout(() => {
+        document.getElementById('ae-status').textContent = data.isRunning ? '● ACTIV' : '○ INACTIV';
+        document.getElementById('ae-status').style.color = data.isRunning ? 'var(--lime)' : 'var(--ink-muted)';
+      }, 2000);
+    }
+  } catch (e) {
+    document.getElementById('ae-status').textContent = '❌ Eroare';
+  }
+  btn.textContent = 'SALVEAZĂ CONFIGURAȚIE';
+  btn.disabled = false;
+}
+
+// Încarcă configurația la pornire
+loadAutoExtendConfig();
+
 checkStatus();
-setInterval(checkStatus, 7000);
+// Verifică statusul la fiecare 5 minute
+setInterval(checkStatus, 5 * 60 * 1000);
+// Reîncarcă configurația la fiecare 5 minute
+setInterval(loadAutoExtendConfig, 5 * 60 * 1000);
+
+// Menține localSeconds sincronizat continuu (scade cate o secunda)
+setInterval(() => {
+  if (localSeconds !== null && localSeconds > 0) {
+    localSeconds -= 1;
+    renderRemaining();
+  }
+}, 1000);
 </script>
 </body>
 </html>

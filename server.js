@@ -24,6 +24,7 @@ if (process.env.STORAGE_STATE_B64) {
 const { verifyCredentials } = require('./lib/auth');
 const { runAction, extendServer } = require('./lib/browser');
 const { getCachedStatus, invalidate } = require('./lib/status');
+const { startAutoExtend, stopAutoExtend, setTarget, setBackup, CONFIG } = require('./lib/automation/auto-extend');
 
 const app = express();
 app.use(express.urlencoded({ extended: true }));
@@ -112,6 +113,33 @@ app.get('/api/status', requireAuth, async (req, res) => {
   }
 });
 
+// ── Auto-extend config ──
+app.get('/api/auto-extend/config', requireAuth, (req, res) => {
+  res.json({
+    ok: true,
+    targetSeconds: CONFIG.targetSeconds,
+    backupSeconds: CONFIG.backupSeconds,
+    checkIntervalMs: CONFIG.checkIntervalMs,
+    cooldownMs: CONFIG.cooldownMs,
+    isRunning: require('./lib/automation/auto-extend').isRunning(),
+  });
+});
+
+app.post('/api/auto-extend/config', requireAuth, async (req, res) => {
+  const { targetSeconds, backupSeconds } = req.body || {};
+  if (targetSeconds !== undefined) {
+    setTarget(targetSeconds);
+  }
+  if (backupSeconds !== undefined) {
+    setBackup(backupSeconds);
+  }
+  res.json({
+    ok: true,
+    targetSeconds: CONFIG.targetSeconds,
+    backupSeconds: CONFIG.backupSeconds,
+  });
+});
+
 // ── Health check (folosit si de self-ping-ul anti-sleep) ──
 app.get('/health', (req, res) => {
   res.json({ ok: true, uptime: process.uptime() });
@@ -120,6 +148,8 @@ app.get('/health', (req, res) => {
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`g4f-relay ruleaza pe portul ${PORT}`);
+  // Porneste background service-ul de auto-extindere +90 min
+  startAutoExtend();
 });
 
 // ── Self-ping anti-sleep ──
