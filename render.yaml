@@ -1,0 +1,32 @@
+services:
+  - type: web
+    name: g4f-relay
+    runtime: docker
+    plan: free
+    envVars:
+      - key: SERVER_CONSOLE_URL
+        value: https://control.gaming4free.net/server/48709f0f/console
+      - key: SESSION_SECRET
+        sync: false
+      - key: UPSTASH_REDIS_REST_URL
+        sync: false
+      - key: UPSTASH_REDIS_REST_TOKEN
+        sync: false
+      - key: PORT
+        value: 3000
+      - key: PUBLIC_URL
+        sync: false
+      - key: STORAGE_STATE_B64
+        sync: false
+      - key: AUTO_EXTEND_TARGET_SECONDS
+        value: "43200"
+      - key: AUTO_EXTEND_BACKUP_SECONDS
+        value: "7200"
+      - key: AUTO_EXTEND_CHECK_INTERVAL
+        value: "300000"
+      - key: AUTO_EXTEND_COOLDOWN
+        value: "600000"
+      - key: AUTO_EXTEND_TEST_MODE
+        value: "false"
+      - key: AUTO_EXTEND_TEST_REMAINING
+        value: "0"
