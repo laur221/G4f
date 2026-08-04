@@ -272,6 +272,24 @@
       </button>
     </div>
 
+    <!-- ── Backup save -> Google Drive ── -->
+    <div class="res-panel show" id="backup-panel" style="margin-top:16px;">
+      <div class="res-panel-head">
+        <span class="res-panel-title">BACKUP SAVE → DRIVE</span>
+        <span class="res-live" id="backup-status">—</span>
+      </div>
+      <div style="font-size:9px;color:var(--ink-muted);margin-bottom:8px;">
+        Descarcă Level.sav + LevelMeta.sav + Players/*.sav și le încarcă în Google Drive
+        (păstrând doar ultimele backup-uri).
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        <button onclick="runBackupNow()" style="width:100%;padding:8px;border-radius:7px;border:2px solid rgba(39,225,255,.45);color:var(--cyan);background:rgba(39,225,255,.08);cursor:pointer;font-family:var(--pixel);font-size:8px;letter-spacing:.08em;">
+          BACKUP ACUM
+        </button>
+        <div id="backup-result" style="font-size:10px;color:var(--ink-muted);font-family:var(--mono);white-space:pre-wrap;display:none;"></div>
+      </div>
+    </div>
+
     <!-- ── Manual extend ── -->
     <div class="extend-row" id="manual-extend-row" style="margin-top:12px;">
       <div style="display:flex;gap:6px;align-items:center;justify-content:center;">
@@ -577,6 +595,51 @@ async function testExtend() {
   setTimeout(checkStatus, 2000);
 }
 
+// Backup save -> Google Drive
+async function runBackupNow() {
+  const statusEl = document.getElementById('backup-status');
+  const resultEl = document.getElementById('backup-result');
+  statusEl.textContent = '● ÎN CURS...';
+  resultEl.style.display = 'none';
+  try {
+    const res = await fetch('/api/backup', { method: 'POST' });
+    const data = await res.json();
+    if (data.ok) {
+      const files = (data.files || []).map((f) => (f.players ? 'Players/' : '') + f.name).join('\n');
+      const pruned = data.pruned && data.pruned.deleted > 0 ? `\n(șterse ${data.pruned.deleted} vechi)` : '';
+      statusEl.textContent = '✓ GATA';
+      resultEl.textContent = `Backup ${data.timestamp}\n${data.totalFiles} fișier(e), ${data.totalBytes} bytes\n${files}${pruned}`;
+    } else {
+      statusEl.textContent = '✗ EROARE';
+      resultEl.textContent = (data.error || 'Eroare necunoscuta') + '\nVezi logurile serverului.';
+    }
+  } catch (e) {
+    statusEl.textContent = '✗ EROARE';
+    resultEl.textContent = 'Eroare de retea la backup.';
+  }
+  resultEl.style.display = 'block';
+  setTimeout(() => { statusEl.textContent = '—'; }, 8000);
+}
+
+async function loadBackupStatus() {
+  try {
+    const res = await fetch('/api/backup/status');
+    const data = await res.json();
+    const el = document.getElementById('backup-status');
+    if (!el) return;
+    if (data.running) {
+      el.textContent = '● ÎN CURS';
+    } else if (data.lastBackup) {
+      const ok = data.lastBackup.ok ? '✓' : '✗';
+      el.textContent = `${ok} ${data.lastBackup.timestamp}`;
+    } else {
+      el.textContent = `la fiecare ${data.scheduleMinutes || 180} min`;
+    }
+  } catch (e) {
+    // dashboard-ul functioneaza fara aceasta informatie
+  }
+}
+
 // Sincronizare periodica cu serverul
 let statusCheckInFlight = false;
 let autoExtendCooldown = false;
@@ -727,6 +790,7 @@ async function saveAutoExtendConfig() {
 // Încarcă configurația la pornire
 loadAutoExtendConfig();
 loadTestModeConfig();
+loadBackupStatus();
 
 checkStatus();
 // Verifică statusul la fiecare 5 minute
@@ -735,6 +799,8 @@ setInterval(checkStatus, 5 * 60 * 1000);
 setInterval(loadAutoExtendConfig, 5 * 60 * 1000);
 // Reîncarcă test mode la fiecare 5 minute
 setInterval(loadTestModeConfig, 5 * 60 * 1000);
+// Reîncarcă statusul de backup la fiecare 5 minute
+setInterval(loadBackupStatus, 5 * 60 * 1000);
 
 // Menține localSeconds sincronizat continuu (scade cate o secunda)
 setInterval(() => {

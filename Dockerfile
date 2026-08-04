@@ -24,6 +24,15 @@ RUN npm install --omit=dev
 # Descarcam DOAR Chromium (~150 MB), nu tot pachetul Playwright complet.
 RUN npx playwright install chromium chromium-headless-shell
 
+# rclone (client Google Drive) — binary static, de la releases oficiale.
+RUN cd /tmp \
+    && wget -q https://downloads.rclone.org/rclone-current-linux-amd64.zip \
+    && apt-get install -y --no-install-recommends unzip \
+    && unzip -q rclone-current-linux-amd64.zip \
+    && cp rclone-*-linux-amd64/rclone /usr/local/bin/rclone \
+    && chmod +x /usr/local/bin/rclone \
+    && rclone version
+
 # Acum copiem restul codului sursa.
 COPY . .
 

@@ -21,10 +21,24 @@ if (process.env.STORAGE_STATE_B64) {
   );
 }
 
+// La fel pentru rclone.conf (credentialele Google Drive) — RCLONE_CONF_B64.
+const RCLONE_CONF_PATH = path.join(__dirname, 'rclone.conf');
+if (process.env.RCLONE_CONF_B64) {
+  try {
+    fs.writeFileSync(RCLONE_CONF_PATH, Buffer.from(process.env.RCLONE_CONF_B64, 'base64'));
+    console.log('rclone.conf reconstruit din RCLONE_CONF_B64.');
+  } catch (err) {
+    console.error('Nu am putut scrie rclone.conf din RCLONE_CONF_B64:', err);
+  }
+} else {
+  console.warn('RCLONE_CONF_B64 nu e setat — backup-ul Google Drive va esua.');
+}
+
 const { verifyCredentials } = require('./lib/auth');
 const { runAction, extendServer } = require('./lib/browser');
 const { getCachedStatus, invalidate } = require('./lib/status');
 const { startAutoExtend, stopAutoExtend, setTarget, setBackup, CONFIG, setTestMode, setTestRemaining } = require('./lib/automation/auto-extend');
+const { runBackup } = require('./lib/backup');
 
 const app = express();
 app.use(express.urlencoded({ extended: true }));
@@ -185,11 +199,65 @@ app.get('/health', (req, res) => {
   res.json({ ok: true, uptime: process.uptime() });
 });
 
+// ── Backup save -> Google Drive ──
+let backupRunning = false;
+let lastBackup = null;
+let backupTimer = null;
+
+app.post('/api/backup', requireAuth, async (req, res) => {
+  if (backupRunning) return res.status(409).json({ ok: false, error: 'Un backup e deja in curs' });
+  backupRunning = true;
+  try {
+    const report = await runBackup();
+    lastBackup = report;
+    res.json(report);
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  } finally {
+    backupRunning = false;
+  }
+});
+
+app.get('/api/backup/status', requireAuth, (req, res) => {
+  res.json({
+    ok: true,
+    lastBackup,
+    running: backupRunning,
+    scheduleMinutes: process.env.BACKUP_INTERVAL_MINUTES ? parseInt(process.env.BACKUP_INTERVAL_MINUTES, 10) : 180,
+  });
+});
+
+// Backup programat: la fiecare BACKUP_INTERVAL_MINUTES (default 3h).
+// Se dezactiveaza explicit cu BACKUP_INTERVAL_MINUTES=0.
+function startBackupSchedule() {
+  const intervalMin = parseInt(process.env.BACKUP_INTERVAL_MINUTES, 10);
+  if (!intervalMin || intervalMin <= 0) {
+    console.log('BACKUP_INTERVAL_MINUTES nu e setat — backup-ul periodic e dezactivat (manual prin /api/backup).');
+    return;
+  }
+  backupTimer = setInterval(async () => {
+    if (backupRunning) return;
+    console.log(`[backup] Program: pornesc backup (la ${intervalMin} min).`);
+    backupRunning = true;
+    try {
+      lastBackup = await runBackup();
+    } catch (err) {
+      console.error('[backup] Program: eroare:', err.message);
+      lastBackup = { ok: false, error: err.message, timestamp: new Date().toISOString() };
+    } finally {
+      backupRunning = false;
+    }
+  }, intervalMin * 60 * 1000);
+  console.log(`Backup-ul save -> Google Drive va rula la fiecare ${intervalMin} min.`);
+}
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`g4f-relay ruleaza pe portul ${PORT}`);
   // Porneste background service-ul de auto-extindere +90 min
   startAutoExtend();
+  // Porneste programul de backup al save-urilor (daca e configurat)
+  startBackupSchedule();
 });
 
 // ── Self-ping anti-sleep ──

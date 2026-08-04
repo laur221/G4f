@@ -85,6 +85,43 @@ g4f-relay/
 └── .env.example
 ```
 
+## Backup automat al save-urilor → Google Drive
+
+Serviciul descarcă periodic save-urile serverului Palworld (prin sesiunea
+ta de pe panoul de fișiere Gaming4Free) și le încarcă într-un folder de pe
+Google Drive, apoi șterge backup-urile mai vechi ca să nu umple locul.
+
+### Setup rclone (o singură dată, local)
+
+```bash
+# instalezi rclone (https://rclone.org), apoi:
+rclone config create gdrive drive config_is_local=true
+#   -> se deschide browserul, te loghezi cu contul Google
+rclone mkdir gdrive:g4f-palworld-backups   # creezi folderul de backup
+```
+
+Apoi pui conținutul `rclone.conf` (creat în folderul curent) în base64 și
+îl salvezi în variabila de mediu `RCLONE_CONF_B64` (pe Render):
+
+```powershell
+[Convert]::ToBase64String([IO.File]::ReadAllBytes("rclone.conf"))
+```
+
+### Variabile de mediu pentru backup
+
+| Variabilă | Rol | Default |
+|---|---|---|
+| `RCLONE_CONF_B64` | Credentialele Google Drive (base64 din rclone.conf) | — |
+| `GDRIVE_REMOTE` | Remote-ul rclone | `gdrive` |
+| `GDRIVE_BACKUP_FOLDER` | Folderul de pe Drive unde se salvează | `g4f-palworld-backups` |
+| `BACKUP_INTERVAL_MINUTES` | Cât de des rulează backup-ul (0 = manual doar) | `180` (3h) |
+| `BACKUP_KEEP_COUNT` | Câte backup-uri păstrezi (vechile se șterg) | `1` |
+| `G4F_SAVE_PATH` | Calea save-ului în panoul de fișiere G4F | — |
+
+Backup-ul se poate porni și manual cu `POST /api/backup` (din dashboard),
+iar `GET /api/backup/status` arată ultimul rezultat. Structura pe Drive:
+`g4f-palworld-backups/<timestamp>/Level.sav + LevelMeta.sav + Players/*.sav`.
+
 ## Verificarea timpului ramas — ceas live, fara refresh
 
 Dashboard-ul afișează timpul rămas și îl numără descrescător **local, în

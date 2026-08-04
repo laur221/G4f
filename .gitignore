@@ -1,3 +1,5 @@
 .env
 node_modules
 storageState.json
+rclone.conf
+.backups/
