@@ -157,6 +157,20 @@ app.post('/api/auto-extend/config', requireAuth, async (req, res) => {
   });
 });
 
+// ── Oprire/pornire auto-extend la runtime ──
+app.post('/api/auto-extend/state', requireAuth, async (req, res) => {
+  const { enabled } = req.body || {};
+  if (enabled === true) {
+    startAutoExtend();
+  } else if (enabled === false) {
+    stopAutoExtend();
+  }
+  res.json({
+    ok: true,
+    isRunning: require('./lib/automation/auto-extend').isRunning(),
+  });
+});
+
 // ── Test mode endpoints ──
 app.get('/api/auto-extend/test-mode', requireAuth, (req, res) => {
   res.json({
@@ -256,7 +270,12 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`g4f-relay ruleaza pe portul ${PORT}`);
   // Porneste background service-ul de auto-extindere +90 min
-  startAutoExtend();
+  // (doar daca AUTO_EXTEND_ENABLED nu e explicit "false")
+  if (process.env.AUTO_EXTEND_ENABLED !== 'false') {
+    startAutoExtend();
+  } else {
+    console.log('[auto-extend] OPRIT prin AUTO_EXTEND_ENABLED=false.');
+  }
   // Porneste programul de backup al save-urilor (daca e configurat)
   startBackupSchedule();
 });
