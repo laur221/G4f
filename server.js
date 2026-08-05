@@ -251,7 +251,7 @@ app.get('/health', (req, res) => {
 
 // ── Memorie proces (debug — doar admin) ──
 // Ajuta sa vedem daca memoria creste spre limita de 512MB a planului free Render.
-app.get('/api/memory', requireAuth, (req, res) => {
+app.get('/api/memory', requireAdmin, (req, res) => {
   const mem = process.memoryUsage();
   res.json({
     ok: true,
