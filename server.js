@@ -35,7 +35,7 @@ if (process.env.RCLONE_CONF_B64) {
 }
 
 const { verifyCredentials } = require('./lib/auth');
-const { runAction, extendServer } = require('./lib/browser');
+const { runAction, extendServer, renewServer } = require('./lib/browser');
 const { getCachedStatus, invalidate } = require('./lib/status');
 const { startAutoExtend, stopAutoExtend, setTarget, setBackup, CONFIG, setTestMode, setTestRemaining } = require('./lib/automation/auto-extend');
 const { runBackup } = require('./lib/backup');
@@ -114,6 +114,18 @@ app.post('/api/extend', requireAuth, async (req, res) => {
     res.json(result);
   } catch (err) {
     console.error('Eroare la extindere:', err.message);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ── RENEW & UNSUSPEND manual (reactivare server suspendat) ──
+app.post('/api/renew', requireAuth, async (req, res) => {
+  try {
+    const result = await renewServer();
+    if (result.ok && result.suspended) invalidate();
+    res.json(result);
+  } catch (err) {
+    console.error('Eroare la renew:', err.message);
     res.status(500).json({ ok: false, error: err.message });
   }
 });
