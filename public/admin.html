@@ -2,7 +2,7 @@
 <html lang="ro">
 <head>
 <meta charset="UTF-8">
-<title>Console — G4F Relay</title>
+<title>Admin — G4F Relay</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -195,7 +195,7 @@
   <div class="scanlines"></div>
 
   <div class="card">
-    <h1>Serverul Nicu<br>PalWorld</h1>
+    <h1>Serverul Nicu<br>PalWorld — ADMIN</h1>
 
     <div class="status-row">
       <span class="status-pill offline" id="status-pill">
@@ -313,6 +313,23 @@
         <button onclick="testExtend()" style="flex:1;padding:8px;border-radius:7px;border:2px solid rgba(39,225,255,.45);color:var(--cyan);background:rgba(39,225,255,.08);cursor:pointer;font-family:var(--pixel);font-size:8px;letter-spacing:.08em;">
           EXTINDE TEST
         </button>
+      </div>
+    </div>
+
+    <!-- ── Memorie Render (debug) ── -->
+    <div class="res-panel show" id="mem-panel" style="margin-top:16px;">
+      <div class="res-panel-head">
+        <span class="res-panel-title">MEMORY RENDER</span>
+        <span class="res-live" id="mem-status">—</span>
+      </div>
+      <div id="mem-box" style="font-family:var(--mono);font-size:10.5px;line-height:1.7;color:var(--ink);background:rgba(0,0,0,.25);border:1px solid var(--line);border-radius:8px;padding:10px;">
+        Se incarca...
+      </div>
+      <div style="margin-top:6px;height:8px;border-radius:4px;background:rgba(0,0,0,.35);overflow:hidden;border:1px solid var(--line);">
+        <div id="mem-bar" style="height:100%;width:0%;background:linear-gradient(90deg,var(--lime),var(--gold));transition:width .5s;"></div>
+      </div>
+      <div style="font-size:8.5px;color:var(--ink-faint);font-family:var(--mono);margin-top:4px;text-align:right;">
+        limita Render: 512 MB
       </div>
     </div>
 
@@ -764,6 +781,34 @@ setInterval(() => {
     renderRemaining();
   }
 }, 1000);
+
+// ── Memorie Render (debug) ──
+async function loadMemory() {
+  try {
+    const res = await fetch('/api/memory');
+    const d = await res.json();
+    const box = document.getElementById('mem-box');
+    if (!d.ok) { box.textContent = 'Eroare: ' + (d.error || 'necunoscuta'); return; }
+    const pct = Math.min(100, Math.round((d.rssMB / d.limitMB) * 100));
+    const bar = document.getElementById('mem-bar');
+    bar.style.width = pct + '%';
+    bar.style.background = pct > 85 ? 'var(--red)' : (pct > 65 ? 'var(--gold)' : 'linear-gradient(90deg,var(--lime),var(--gold))');
+    document.getElementById('mem-status').textContent = d.rssMB + ' MB';
+    document.getElementById('mem-status').style.color = pct > 85 ? 'var(--red)' : 'var(--lime)';
+    const host = d.host || 'local';
+    box.innerHTML =
+      `RSS:   ${d.rssMB} MB / ${d.limitMB} MB (${pct}%)\n` +
+      `Heap:  ${d.heapUsedMB} / ${d.heapTotalMB} MB\n` +
+      `Ext:   ${d.externalMB} MB\n` +
+      `Uptime: ${Math.floor(d.uptimeSec / 60)} min\n` +
+      `Host:  ${host}`;
+  } catch (e) {
+    const box = document.getElementById('mem-box');
+    if (box) box.textContent = 'Eroare retea la /api/memory.';
+  }
+}
+loadMemory();
+setInterval(loadMemory, 5000);
 
 // ── Load test mode config ──
 async function loadTestModeConfig() {

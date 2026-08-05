@@ -59,19 +59,33 @@ function requireAuth(req, res, next) {
   return res.redirect('/login');
 }
 
+function requireAdmin(req, res, next) {
+  if (req.session && req.session.loggedIn && req.session.role === 'admin') return next();
+  return res.status(403).json({ ok: false, error: 'Acces interzis — cont admin necesar.' });
+}
+
+function homeForRole(role) {
+  return role === 'admin' ? '/admin' : '/nicu';
+}
+
 // ── Login ──
 app.get('/login', (req, res) => {
+  // Deja autentificat? Trimitem direct la pagina lui.
+  if (req.session && req.session.loggedIn) {
+    return res.redirect(homeForRole(req.session.role));
+  }
   res.sendFile(path.join(__dirname, 'public', 'login.html'));
 });
 
 app.post('/login', async (req, res) => {
   const { username, password } = req.body;
   try {
-    const ok = await verifyCredentials(username, password);
-    if (!ok) return res.redirect('/login?error=1');
+    const auth = await verifyCredentials(username, password);
+    if (!auth.ok) return res.redirect('/login?error=1');
     req.session.loggedIn = true;
-    req.session.username = username;
-    res.redirect('/');
+    req.session.username = auth.username;
+    req.session.role = auth.role;
+    res.redirect(homeForRole(auth.role));
   } catch (err) {
     console.error('Eroare login:', err);
     res.redirect('/login?error=1');
@@ -83,9 +97,18 @@ app.post('/logout', (req, res) => {
   res.redirect('/login');
 });
 
-// ── Dashboard ──
+// ── Pagini (Admin / Nicu) ──
 app.get('/', requireAuth, (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'dashboard.html'));
+  res.redirect(homeForRole(req.session.role));
+});
+
+app.get('/admin', requireAuth, (req, res) => {
+  if (req.session.role !== 'admin') return res.redirect('/nicu');
+  res.sendFile(path.join(__dirname, 'public', 'admin.html'));
+});
+
+app.get('/nicu', requireAuth, (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'nicu.html'));
 });
 
 // ── Actiuni server (Start / Stop / Restart) ──
@@ -106,7 +129,7 @@ app.post('/api/action/:action', requireAuth, async (req, res) => {
 
 // ── Extindere +90 min (cu Turnstile auto-rezolvare) ──
 // Acceptă și parametri opționali pentru extindere manuală cu minute personalizate
-app.post('/api/extend', requireAuth, async (req, res) => {
+app.post('/api/extend', requireAdmin, async (req, res) => {
   const minutes = parseInt(req.body?.minutes, 10) || 90;
   try {
     const result = await extendServer(minutes);
@@ -119,7 +142,7 @@ app.post('/api/extend', requireAuth, async (req, res) => {
 });
 
 // ── RENEW & UNSUSPEND manual (reactivare server suspendat) ──
-app.post('/api/renew', requireAuth, async (req, res) => {
+app.post('/api/renew', requireAdmin, async (req, res) => {
   try {
     const result = await renewServer();
     if (result.ok && result.suspended) invalidate();
@@ -142,7 +165,7 @@ app.get('/api/status', requireAuth, async (req, res) => {
 });
 
 // ── Auto-extend config ──
-app.get('/api/auto-extend/config', requireAuth, (req, res) => {
+app.get('/api/auto-extend/config', requireAdmin, (req, res) => {
   res.json({
     ok: true,
     targetSeconds: CONFIG.targetSeconds,
@@ -153,7 +176,7 @@ app.get('/api/auto-extend/config', requireAuth, (req, res) => {
   });
 });
 
-app.post('/api/auto-extend/config', requireAuth, async (req, res) => {
+app.post('/api/auto-extend/config', requireAdmin, async (req, res) => {
   const { targetSeconds, backupSeconds } = req.body || {};
   if (targetSeconds !== undefined) {
     setTarget(targetSeconds);
@@ -170,7 +193,7 @@ app.post('/api/auto-extend/config', requireAuth, async (req, res) => {
 });
 
 // ── Oprire/pornire auto-extend la runtime ──
-app.post('/api/auto-extend/state', requireAuth, async (req, res) => {
+app.post('/api/auto-extend/state', requireAdmin, async (req, res) => {
   const { enabled } = req.body || {};
   if (enabled === true) {
     startAutoExtend();
@@ -184,7 +207,7 @@ app.post('/api/auto-extend/state', requireAuth, async (req, res) => {
 });
 
 // ── Test mode endpoints ──
-app.get('/api/auto-extend/test-mode', requireAuth, (req, res) => {
+app.get('/api/auto-extend/test-mode', requireAdmin, (req, res) => {
   res.json({
     ok: true,
     testMode: CONFIG.testMode,
@@ -192,7 +215,7 @@ app.get('/api/auto-extend/test-mode', requireAuth, (req, res) => {
   });
 });
 
-app.post('/api/auto-extend/test-mode', requireAuth, async (req, res) => {
+app.post('/api/auto-extend/test-mode', requireAdmin, async (req, res) => {
   const { enabled, remainingSeconds } = req.body || {};
   setTestMode(enabled === true, remainingSeconds || 0);
   res.json({
@@ -202,7 +225,7 @@ app.post('/api/auto-extend/test-mode', requireAuth, async (req, res) => {
   });
 });
 
-app.post('/api/auto-extend/test-set-remaining', requireAuth, async (req, res) => {
+app.post('/api/auto-extend/test-set-remaining', requireAdmin, async (req, res) => {
   const { seconds } = req.body || {};
   setTestRemaining(parseInt(seconds, 10) || 0);
   res.json({
@@ -212,7 +235,7 @@ app.post('/api/auto-extend/test-set-remaining', requireAuth, async (req, res) =>
 });
 
 // ── Manual extend trigger (for testing) ──
-app.post('/api/auto-extend/test-extend', requireAuth, async (req, res) => {
+app.post('/api/auto-extend/test-extend', requireAdmin, async (req, res) => {
   try {
     const result = await extendServer();
     res.json(result);
@@ -226,12 +249,29 @@ app.get('/health', (req, res) => {
   res.json({ ok: true, uptime: process.uptime() });
 });
 
+// ── Memorie proces (debug — doar admin) ──
+// Ajuta sa vedem daca memoria creste spre limita de 512MB a planului free Render.
+app.get('/api/memory', requireAuth, (req, res) => {
+  const mem = process.memoryUsage();
+  res.json({
+    ok: true,
+    rssMB: Math.round(mem.rss / 1024 / 1024),
+    heapUsedMB: Math.round(mem.heapUsed / 1024 / 1024),
+    heapTotalMB: Math.round(mem.heapTotal / 1024 / 1024),
+    externalMB: Math.round(mem.external / 1024 / 1024),
+    arrayBuffersMB: Math.round((mem.arrayBuffers || 0) / 1024 / 1024),
+    limitMB: 512,
+    uptimeSec: Math.round(process.uptime()),
+    host: process.env.RENDER_INSTANCE_ID || 'local',
+  });
+});
+
 // ── Backup save -> Google Drive ──
 let backupRunning = false;
 let lastBackup = null;
 let backupTimer = null;
 
-app.post('/api/backup', requireAuth, async (req, res) => {
+app.post('/api/backup', requireAdmin, async (req, res) => {
   if (backupRunning) return res.status(409).json({ ok: false, error: 'Un backup e deja in curs' });
   backupRunning = true;
   try {
@@ -245,7 +285,7 @@ app.post('/api/backup', requireAuth, async (req, res) => {
   }
 });
 
-app.get('/api/backup/status', requireAuth, (req, res) => {
+app.get('/api/backup/status', requireAdmin, (req, res) => {
   res.json({
     ok: true,
     lastBackup,
