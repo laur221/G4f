@@ -21,9 +21,24 @@
   body{
     margin:0; font-family:var(--sans); color:var(--ink);
     background:#0a0814;
-    min-height:100vh; display:flex; align-items:center; justify-content:center;
-    padding:20px; position:relative; overflow:hidden;
+    min-height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:flex-start;
+    padding:20px; position:relative; overflow-y:auto;
   }
+
+  /* ── Layout pe 2 coloane: card principal + panou resurse in dreapta ── */
+  .layout{
+    position:relative; z-index:4; width:100%; max-width:760px;
+    display:flex; align-items:flex-start; justify-content:center; gap:20px;
+  }
+  .res-side{
+    display:none; width:280px; flex-shrink:0;
+    background:var(--surface); border:2px solid var(--line); border-radius:14px;
+    padding:20px 18px; position:sticky; top:20px;
+    backdrop-filter:blur(20px) saturate(140%); -webkit-backdrop-filter:blur(20px) saturate(140%);
+    box-shadow:0 20px 50px rgba(0,0,0,.5);
+  }
+  .res-side.show{ display:block; }
+  .res-side .res-panel{ margin-top:0; padding-top:0; border-top:none; }
 
   /* ── Background: radial glows + scrolling grid floor ── */
   .bg{
@@ -159,6 +174,17 @@
   .res-spark{ width:100%; height:26px; display:block; }
 
   /* ── Responsive: telefoane / ecrane inguste ── */
+  @media (max-width: 700px){
+    .layout{
+      flex-direction:column;
+      gap:14px;
+    }
+    .res-side{
+      width:100%;
+      position:static;
+    }
+  }
+
   @media (max-width: 480px){
     body{
       padding:12px;
@@ -194,6 +220,7 @@
   <div class="grid-floor"></div>
   <div class="scanlines"></div>
 
+  <div class="layout">
   <div class="card">
     <h1>Serverul Nicu<br>PalWorld — ADMIN</h1>
 
@@ -220,34 +247,6 @@
     </div>
 
     <div id="status"></div>
-
-    <div class="res-panel" id="res-panel">
-      <div class="res-panel-head">
-        <span class="res-panel-title">RESOURCES</span>
-        <span class="res-live">LIVE</span>
-      </div>
-      <div class="res-row">
-        <div class="res-top">
-          <span class="res-label" style="color:var(--lime)">CPU</span>
-          <span class="res-val" id="res-cpu">—</span>
-        </div>
-        <svg class="res-spark" id="spark-cpu" viewBox="0 0 200 26" preserveAspectRatio="none"></svg>
-      </div>
-      <div class="res-row">
-        <div class="res-top">
-          <span class="res-label" style="color:var(--cyan)">MEMORY</span>
-          <span class="res-val" id="res-memory">—</span>
-        </div>
-        <svg class="res-spark" id="spark-memory" viewBox="0 0 200 26" preserveAspectRatio="none"></svg>
-      </div>
-      <div class="res-row">
-        <div class="res-top">
-          <span class="res-label" style="color:var(--pink)">NETWORK</span>
-          <span class="res-val" id="res-network" style="font-size:10px">—</span>
-        </div>
-        <svg class="res-spark" id="spark-network" viewBox="0 0 200 26" preserveAspectRatio="none"></svg>
-      </div>
-    </div>
 
     <!-- ── Auto-extend settings ── -->
     <div class="res-panel show" id="auto-extend-panel" style="margin-top:16px;">
@@ -338,6 +337,37 @@
         <button type="submit">Iesire</button>
       </form>
     </div>
+  </div>
+
+  <div class="res-side" id="res-side">
+    <div class="res-panel show" id="res-panel">
+      <div class="res-panel-head">
+        <span class="res-panel-title">RESOURCES</span>
+        <span class="res-live">LIVE</span>
+      </div>
+      <div class="res-row">
+        <div class="res-top">
+          <span class="res-label" style="color:var(--lime)">CPU</span>
+          <span class="res-val" id="res-cpu">—</span>
+        </div>
+        <svg class="res-spark" id="spark-cpu" viewBox="0 0 200 26" preserveAspectRatio="none"></svg>
+      </div>
+      <div class="res-row">
+        <div class="res-top">
+          <span class="res-label" style="color:var(--cyan)">MEMORY</span>
+          <span class="res-val" id="res-memory">—</span>
+        </div>
+        <svg class="res-spark" id="spark-memory" viewBox="0 0 200 26" preserveAspectRatio="none"></svg>
+      </div>
+      <div class="res-row">
+        <div class="res-top">
+          <span class="res-label" style="color:var(--pink)">NETWORK</span>
+          <span class="res-val" id="res-network" style="font-size:10px">—</span>
+        </div>
+        <svg class="res-spark" id="spark-network" viewBox="0 0 200 26" preserveAspectRatio="none"></svg>
+      </div>
+    </div>
+  </div>
   </div>
 
   <footer>g4f-relay</footer>
@@ -691,17 +721,17 @@ function drawSpark(svgId, key, color) {
 }
 
 function renderResources(resources) {
-  const panel = document.getElementById('res-panel');
+  const side = document.getElementById('res-side');
 
   if (!resources || !isOnline) {
-    panel.classList.remove('show');
+    side.classList.remove('show');
     return;
   }
 
   document.getElementById('res-cpu').textContent = resources.cpu || '—';
   document.getElementById('res-memory').textContent = resources.memory || '—';
   document.getElementById('res-network').textContent = resources.network || '—';
-  panel.classList.add('show');
+  side.classList.add('show');
 
   pushSparkPoint('cpu', resources.cpuNum);
   pushSparkPoint('memory', resources.memoryNum);
