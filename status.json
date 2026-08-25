@@ -1,10 +1,10 @@
 {
-  "action": "status",
+  "action": "extend",
   "ok": true,
   "error": null,
   "suspended": false,
-  "remainingSeconds": 83810,
-  "remainingLabel": "23:16:50",
+  "remainingSeconds": 86233,
+  "remainingLabel": "23:57:13",
   "online": true,
   "resources": {
     "cpu": "71.2%/ 100%",
@@ -14,5 +14,7 @@
     "network": "↓493.00 Bytes/s ↑0 Bytes/s",
     "networkNum": 493
   },
-  "finishedAt": "2026-08-25T10:10:05.036Z"
+  "finishedAt": "2026-08-25T11:00:27.471Z",
+  "addedMinutes": 90,
+  "adsUsed": 2
 }
