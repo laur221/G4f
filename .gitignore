@@ -2,4 +2,6 @@
 node_modules
 storageState.json
 rclone.conf
-.backups/
+.backups/cloudflared.exe
+tunnel*.log
+start-g4f.ps1

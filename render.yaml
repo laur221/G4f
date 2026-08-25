@@ -1,4 +1,4 @@
-services:
+﻿services:
   - type: web
     name: g4f-relay
     runtime: docker
@@ -19,7 +19,7 @@ services:
       - key: STORAGE_STATE_B64
         sync: false
       - key: AUTO_EXTEND_TARGET_SECONDS
-        value: "43200"
+        value: "172800"
       - key: AUTO_EXTEND_BACKUP_SECONDS
         value: "7200"
       - key: AUTO_EXTEND_CHECK_INTERVAL
@@ -30,10 +30,11 @@ services:
         value: "false"
       - key: AUTO_EXTEND_TEST_REMAINING
         value: "0"
-      # Calea 0 (gratuita, FARA captcha): apel direct $wire.extendWebAd() —
+      # Calea 0 (gratuita, FARA captcha): apel direct $wire.extendWebAd() â€”
       # serverul nu valideaza vizionarea reclamei, adauga +90 min direct.
       # CAPTCHA_API_KEY e doar fallback (calea B) si nu mai e necesar.
       - key: CAPTCHA_API_KEY
         sync: false
       - key: CAPTCHA_PROVIDER
         value: "2captcha"
+
