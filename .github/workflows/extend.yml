@@ -1,0 +1,56 @@
+name: G4F Auto-Extend
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'   # la fiecare 30 de minute
+  workflow_dispatch: {}       # buton manual "Run workflow"
+
+concurrency:
+  group: g4f-extend
+  cancel-in-progress: false
+
+jobs:
+  extend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      # Dependente de sistem pentru Chromium headless
+      - name: Install system deps
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq \
+            chromium chromium-driver xvfb \
+            fonts-liberation libasound2 libatk-bridge2.0-0 libatk1.0-0 \
+            libcups2 libdrm2 libgbm1 libgtk-3-0 libnspr4 libnss3 \
+            libxcomposite1 libxdamage1 libxfixes3 libxkbcommon0 \
+            libxrandr2 libu2f-udev xdg-utils
+          sudo ln -sf /usr/bin/chromium /usr/bin/google-chrome || true
+          sudo ln -sf /usr/bin/chromium /usr/bin/chrome || true
+
+      - name: Install npm deps + Playwright browser
+        run: |
+          npm ci --omit=dev || npm install --omit=dev
+          npx playwright install chromium chromium-headless-shell
+
+      - name: Run extend cycle
+        env:
+          STORAGE_STATE_B64: ${{ secrets.STORAGE_STATE_B64 }}
+          SERVER_CONSOLE_URL: ${{ secrets.SERVER_CONSOLE_URL }}
+          WEB_AD_MAX: '15'
+          EXTEND_MINUTES: '90'
+          AUTO_EXTEND_TARGET_SECONDS: '172800'
+        run: node extend-once.js
+
+      # Preventeaza dezactivarea cronului dupa 60 zile de inactivitate
+      - uses: gautamkrishnar/keepalive-workflow@v2
+
+      - name: Cleanup session artifacts (siguranta)
+        if: always()
+        run: rm -f storageState.json
