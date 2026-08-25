@@ -21,19 +21,38 @@ if (process.env.STORAGE_STATE_B64) {
   process.exit(1);
 }
 
-const { extendServer } = require('./lib/browser');
+const { extendServer, runAction, renewServer, getStatus } = require('./lib/browser');
 
 (async () => {
-  const minutes = parseInt(process.env.EXTEND_MINUTES || '90', 10);
-  console.log(`[run] Start extindere (${minutes} min per reclama, pana la ${process.env.WEB_AD_MAX || 15} reclame)...`);
+  const ACTION = (process.env.GH_ACTION || 'extend').toLowerCase();
+  console.log(`[run] Actiune: ${ACTION}`);
+
   try {
-    const result = await extendServer(minutes);
-    console.log('[result]', JSON.stringify(result, null, 2));
-    if (!result.ok) {
-      console.error('[!] Extinderea nu a reusit complet.');
-      process.exitCode = 1;
+    if (ACTION === 'extend') {
+      const minutes = parseInt(process.env.EXTEND_MINUTES || '90', 10);
+      console.log(`[run] Extindere (${minutes} min per reclama, pana la ${process.env.WEB_AD_MAX || 15} reclame)...`);
+      const result = await extendServer(minutes);
+      console.log('[result]', JSON.stringify(result, null, 2));
+      if (!result.ok) {
+        console.error('[!] Extinderea nu a reusit complet.');
+        process.exitCode = 1;
+      } else {
+        console.log(`[OK] Timer acum: ${result.remainingLabel} (+${result.addedMinutes} min, ${result.adsUsed || '?'} reclame)`);
+      }
+    } else if (ACTION === 'renew') {
+      const result = await renewServer();
+      console.log('[result]', JSON.stringify(result, null, 2));
+    } else if (ACTION === 'status') {
+      const { getStatus } = require('./lib/browser');
+      const result = await getStatus();
+      console.log('[result]', JSON.stringify(result, null, 2));
+    } else if (['start', 'stop', 'restart'].includes(ACTION)) {
+      const result = await runAction(ACTION);
+      console.log('[result]', JSON.stringify(result, null, 2));
+      if (!result.ok) process.exitCode = 1;
     } else {
-      console.log(`[OK] Timer acum: ${result.remainingLabel} (+${result.addedMinutes} min, ${result.adsUsed || '?'} reclame folosite)`);
+      console.error(`[!] Actiune necunoscuta: ${ACTION}`);
+      process.exitCode = 1;
     }
   } catch (err) {
     console.error('[ERR]', err.message);

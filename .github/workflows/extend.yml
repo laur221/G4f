@@ -3,7 +3,20 @@ name: G4F Auto-Extend
 on:
   schedule:
     - cron: '*/30 * * * *'   # la fiecare 30 de minute
-  workflow_dispatch: {}       # buton manual "Run workflow"
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Ce actiune sa execute?'
+        required: true
+        default: 'extend'
+        type: choice
+        options:
+          - extend        # +90min x reclame (normal)
+          - start         # porneste serverul de joc
+          - stop          # opreste serverul de joc
+          - restart       # restarteaza serverul de joc
+          - renew         # RENEW & UNSUSPEND (server suspendat)
+          - status        # doar citeste statusul (timp ramas, online)
 
 concurrency:
   group: g4f-extend
@@ -27,13 +40,14 @@ jobs:
           npm ci --omit=dev || npm install --omit=dev
           sudo env PATH="$PATH" npx playwright install --with-deps chromium chromium-headless-shell
 
-      - name: Run extend cycle
+      - name: Run action
         env:
           STORAGE_STATE_B64: ${{ secrets.STORAGE_STATE_B64 }}
           SERVER_CONSOLE_URL: ${{ secrets.SERVER_CONSOLE_URL }}
           WEB_AD_MAX: '15'
           EXTEND_MINUTES: '90'
           AUTO_EXTEND_TARGET_SECONDS: '172800'
+          GH_ACTION: ${{ github.event.inputs.action || 'extend' }}
         run: node extend-once.js
 
       # Preventeaza dezactivarea cronului dupa 60 zile de inactivitate
