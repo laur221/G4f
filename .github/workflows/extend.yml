@@ -22,6 +22,9 @@ concurrency:
   group: g4f-extend
   cancel-in-progress: false
 
+permissions:
+  contents: write
+
 jobs:
   extend:
     runs-on: ubuntu-latest
@@ -52,6 +55,18 @@ jobs:
 
       # Preventeaza dezactivarea cronului dupa 60 zile de inactivitate
       # (reactivam manual daca e necesar)
+
+      # Publica status.json (timer, online, resurse) + pastreaza repo-ul activ
+      - name: Publish status.json
+        if: always()
+        run: |
+          git config user.name "g4f-bot"
+          git config user.email "bot@g4f.local"
+          if [ -f status.json ]; then
+            git add status.json
+            git commit -m "status update [skip ci]" || echo "fara modificari"
+            git push || true
+          fi
 
       - name: Cleanup session artifacts (siguranta)
         if: always()
