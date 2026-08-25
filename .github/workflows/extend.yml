@@ -49,7 +49,7 @@ jobs:
         run: node extend-once.js
 
       # Preventeaza dezactivarea cronului dupa 60 zile de inactivitate
-      - uses: gautamkrishnar/keepalive-workflow@v2
+      # (reactivam manual daca e necesar)
 
       - name: Cleanup session artifacts (siguranta)
         if: always()
