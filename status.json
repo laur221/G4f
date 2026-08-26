@@ -3,8 +3,8 @@
   "ok": true,
   "error": null,
   "suspended": false,
-  "remainingSeconds": 163871,
-  "remainingLabel": "45:31:11",
+  "remainingSeconds": 166508,
+  "remainingLabel": "46:15:08",
   "online": true,
   "resources": {
     "cpu": "71.2%/ 100%",
@@ -14,7 +14,7 @@
     "network": "↓493.00 Bytes/s ↑0 Bytes/s",
     "networkNum": 493
   },
-  "finishedAt": "2026-08-26T11:56:30.508Z",
+  "finishedAt": "2026-08-26T12:42:33.800Z",
   "addedMinutes": 90,
   "adsUsed": 2
 }
