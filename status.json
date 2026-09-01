@@ -1,10 +1,10 @@
 {
   "action": "extend",
-  "ok": true,
-  "error": null,
+  "ok": false,
+  "error": "Extinderea nu a marit timpul. Inainte: 45:58:20 (165500s), Dupa: 45:57:45 (165465s). Butonul era: \"+ 90 min\". Timp ramas: 45:57:45. Nu exista CAPTCHA_API_KEY — pentru bypass headless sigur, seteaza o cheie 2Captcha/CapSolver in Render (Environment).",
   "suspended": false,
-  "remainingSeconds": 172755,
-  "remainingLabel": "47:59:15",
+  "remainingSeconds": null,
+  "remainingLabel": null,
   "online": true,
   "resources": {
     "cpu": "71.2%/ 100%",
@@ -14,7 +14,7 @@
     "network": "↓493.00 Bytes/s ↑0 Bytes/s",
     "networkNum": 493
   },
-  "finishedAt": "2026-09-01T21:44:08.305Z",
-  "addedMinutes": 167,
-  "adsUsed": 15
+  "finishedAt": "2026-09-01T23:45:33.820Z",
+  "addedMinutes": null,
+  "adsUsed": 0
 }
