@@ -19,7 +19,7 @@
       - key: STORAGE_STATE_B64
         sync: false
       - key: AUTO_EXTEND_TARGET_SECONDS
-        value: "172800"
+        value: "43200"
       - key: AUTO_EXTEND_BACKUP_SECONDS
         value: "7200"
       - key: AUTO_EXTEND_CHECK_INTERVAL
@@ -35,6 +35,10 @@
       # CAPTCHA_API_KEY e doar fallback (calea B) si nu mai e necesar.
       - key: CAPTCHA_API_KEY
         sync: false
+      - key: LOW_RAM
+        value: 'true'
+      - key: WEB_AD_MAX
+        value: '5'
       - key: CAPTCHA_PROVIDER
         value: "2captcha"
 
