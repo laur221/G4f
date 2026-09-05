@@ -23,7 +23,7 @@
       - key: AUTO_EXTEND_BACKUP_SECONDS
         value: "7200"
       - key: AUTO_EXTEND_CHECK_INTERVAL
-        value: "300000"
+        value: "600000"
       - key: AUTO_EXTEND_COOLDOWN
         value: "600000"
       - key: AUTO_EXTEND_TEST_MODE
