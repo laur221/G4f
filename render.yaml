@@ -38,7 +38,7 @@
       - key: LOW_RAM
         value: 'true'
       - key: WEB_AD_MAX
-        value: '5'
+        value: '15'
       - key: CAPTCHA_PROVIDER
         value: "2captcha"
 
