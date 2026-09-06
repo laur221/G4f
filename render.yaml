@@ -19,7 +19,7 @@
       - key: STORAGE_STATE_B64
         sync: false
       - key: AUTO_EXTEND_TARGET_SECONDS
-        value: "43200"
+        value: "86400"
       - key: AUTO_EXTEND_BACKUP_SECONDS
         value: "7200"
       - key: AUTO_EXTEND_CHECK_INTERVAL
