@@ -49,7 +49,7 @@ jobs:
           SERVER_CONSOLE_URL: ${{ secrets.SERVER_CONSOLE_URL }}
           WEB_AD_MAX: '15'
           EXTEND_MINUTES: '90'
-          AUTO_EXTEND_TARGET_SECONDS: '172800'
+          AUTO_EXTEND_TARGET_SECONDS: '86400'
           GH_ACTION: ${{ github.event.inputs.action || 'extend' }}
         run: node extend-once.js
 
