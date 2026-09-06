@@ -41,4 +41,32 @@
         value: '15'
       - key: CAPTCHA_PROVIDER
         value: "2captcha"
+  - type: cron
+    name: g4f-auto-extend
+    runtime: docker
+    plan: free
+    schedule: "*/30 * * * *"
+    dockerCommand: "node extend-once.js"
+    envVars:
+      - key: SERVER_CONSOLE_URL
+        value: https://control.gaming4free.net/server/48709f0f/console
+      - key: STORAGE_STATE_B64
+        sync: false
+      - key: WEB_AD_MAX
+        value: "15"
+      - key: AUTO_EXTEND_TARGET_SECONDS
+        value: "86400"
+      - key: RCLONE_CONF_B64
+        sync: false
+  - type: cron
+    name: g4f-backup
+    runtime: docker
+    plan: free
+    schedule: "0 3 * * *"
+    dockerCommand: "node backup-once.js"
+    envVars:
+      - key: RCLONE_CONF_B64
+        sync: false
+      - key: STORAGE_STATE_B64
+        sync: false
 
