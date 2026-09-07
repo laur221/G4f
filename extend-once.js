@@ -40,6 +40,26 @@ function saveStatus(extra) {
 
   try {
     if (ACTION === 'extend') {
+      const targetSeconds = parseInt(process.env.AUTO_EXTEND_TARGET_SECONDS || '144000', 10);
+      try {
+        const st = await getStatus();
+        if (st && st.suspended) {
+          console.log('[run] Server SUSPENDED -> renew automat...');
+          const r = await renewServer();
+          console.log('[result]', JSON.stringify(r, null, 2));
+          saveStatus({ action: 'renew', ok: !!r.ok, message: r.message || r.error || null });
+          return;
+        }
+        if (st && st.ok && typeof st.remainingSeconds === 'number' && st.remainingSeconds >= targetSeconds) {
+          console.log(`[run] Target atins (${Math.round(st.remainingSeconds / 3600)}h >= ${Math.round(targetSeconds / 3600)}h). Skip, fara reclame.`);
+          saveStatus({ action: 'extend', ok: true, skipped: true,
+            remainingSeconds: st.remainingSeconds, remainingLabel: st.remainingLabel || null });
+          return;
+        }
+        if (st && st.ok) console.log(`[run] Sub target: ${Math.round((st.remainingSeconds || 0) / 3600)}h < ${Math.round(targetSeconds / 3600)}h. Extind...`);
+      } catch (e) {
+        console.log('[run] Status check esuat, continui cu extinderea:', String(e.message).split('\n')[0]);
+      }
       const minutes = parseInt(process.env.EXTEND_MINUTES || '90', 10);
       console.log(`[run] Extindere (${minutes} min per reclama, pana la ${process.env.WEB_AD_MAX || 15} reclame)...`);
       const result = await extendServer(minutes);
