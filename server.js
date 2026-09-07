@@ -323,10 +323,10 @@ app.listen(PORT, () => {
   console.log(`g4f-relay ruleaza pe portul ${PORT}`);
   // Porneste background service-ul de auto-extindere +90 min
   // (doar daca AUTO_EXTEND_ENABLED nu e explicit "false")
-  if (process.env.AUTO_EXTEND_ENABLED !== 'false') {
+  if (process.env.AUTO_EXTEND_ENABLED === 'true') {
     startAutoExtend();
   } else {
-    console.log('[auto-extend] OPRIT prin AUTO_EXTEND_ENABLED=false.');
+    console.log('[auto-extend] OPRIT pe web (ruleaza pe GitHub Actions). Seteaza AUTO_EXTEND_ENABLED=true ca sa-l pornesti aici.');
   }
   // Porneste programul de backup al save-urilor (daca e configurat)
   startBackupSchedule();
