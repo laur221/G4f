@@ -19,7 +19,7 @@
       - key: STORAGE_STATE_B64
         sync: false
       - key: AUTO_EXTEND_TARGET_SECONDS
-        value: "86400"
+        value: "144000"
       - key: AUTO_EXTEND_BACKUP_SECONDS
         value: "7200"
       - key: AUTO_EXTEND_CHECK_INTERVAL
@@ -55,7 +55,7 @@
       - key: WEB_AD_MAX
         value: "15"
       - key: AUTO_EXTEND_TARGET_SECONDS
-        value: "86400"
+        value: "144000"
       - key: RCLONE_CONF_B64
         sync: false
   - type: cron
