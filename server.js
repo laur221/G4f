@@ -1,4 +1,7 @@
 require('dotenv').config();
+if (process.env.RENDER && !process.env.LOW_RAM) {
+  process.env.LOW_RAM = 'true';
+}
 const express = require('express');
 const cookieSession = require('cookie-session');
 const path = require('path');
