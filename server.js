@@ -321,11 +321,7 @@ function startBackupSchedule() {
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`g4f-relay ruleaza pe portul ${PORT}`);
-  if (process.env.AUTO_EXTEND_ENABLED !== 'false') {
-    startAutoExtend();
-  } else {
-    console.log('[auto-extend] OPRIT (AUTO_EXTEND_ENABLED=false).');
-  }
+  startAutoExtend();
   // Porneste programul de backup al save-urilor (daca e configurat)
   startBackupSchedule();
 });
