@@ -150,10 +150,16 @@ fără să mai fie nevoie să reintroducă datele, atâta timp cât nu apasă
 ## Self-ping anti-sleep (Render, plan gratuit)
 
 Planul gratuit Render adoarme serviciul după ~15 minute fără cereri
-HTTP primite din exterior. Am adăugat o rută `/health` și, dacă setezi
-variabila de mediu `PUBLIC_URL` (link-ul public al serviciului tău de
-pe Render, ex. `https://g4f-relay.onrender.com`), serverul își face
-singur o cerere la acea rută la fiecare 4 minute, ca să rămână treaz.
+HTTP primite din exterior. Serverul apelează `/health` imediat după
+pornire și apoi la fiecare 50 de secunde. Folosește `PUBLIC_URL`, dacă
+este completat, sau automat `RENDER_EXTERNAL_URL` furnizat de Render.
+Intervalul se poate configura cu `SELF_PING_INTERVAL_MS=50000` (milisecunde,
+între 10000 și 600000). Cererile au timeout de 10 secunde și nu se suprapun.
+
+Self-ping-ul funcționează doar cât procesul rulează: nu poate reporni un
+serviciu adormit și nu repară opriri cauzate de erori sau memorie insuficientă.
+Pentru trezire după adormire, un monitor extern poate apela `/health` periodic.
+Render poate reporni serviciile gratuite; self-ping-ul nu garantează uptime.
 
 ⚠️ De reținut: planul gratuit Render are o limită de ~750 ore/lună
 folosite de toate serviciile tale gratuite combinate. Cu self-ping activ,

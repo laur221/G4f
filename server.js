@@ -6,6 +6,7 @@ const express = require('express');
 const cookieSession = require('cookie-session');
 const path = require('path');
 const fs = require('fs');
+const { startSelfPing } = require('./lib/self-ping');
 
 // Render (plan gratuit) nu are disc persistent — reconstruim storageState.json
 // din variabila de mediu STORAGE_STATE_B64 (continut base64).
@@ -249,6 +250,7 @@ app.post('/api/auto-extend/test-extend', requireAdmin, async (req, res) => {
 
 // ── Health check (folosit si de self-ping-ul anti-sleep) ──
 app.get('/health', (req, res) => {
+  res.set('Cache-Control', 'no-store');
   res.json({ ok: true, uptime: process.uptime() });
 });
 
@@ -324,20 +326,8 @@ function startBackupSchedule() {
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`g4f-relay ruleaza pe portul ${PORT}`);
+  startSelfPing();
   startAutoExtend();
   // Porneste programul de backup al save-urilor (daca e configurat)
   startBackupSchedule();
 });
-
-// ── Self-ping anti-sleep ──
-if (process.env.PUBLIC_URL) {
-  const PING_INTERVAL_MS = 4 * 60 * 1000;
-  setInterval(() => {
-    fetch(`${process.env.PUBLIC_URL.replace(/\/$/, '')}/health`)
-      .then((r) => console.log(`[self-ping] ${r.status}`))
-      .catch((err) => console.error('[self-ping] esuat:', err.message));
-  }, PING_INTERVAL_MS);
-  console.log(`Self-ping activ catre ${process.env.PUBLIC_URL}/health la fiecare 4 minute.`);
-} else {
-  console.log('PUBLIC_URL nu e setat — self-ping dezactivat (serviciul poate adormi pe planul gratuit Render).');
-}

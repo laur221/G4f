@@ -3,6 +3,7 @@
     name: g4f-relay
     runtime: docker
     plan: free
+    healthCheckPath: /health
     envVars:
       - key: SERVER_CONSOLE_URL
         value: https://control.gaming4free.net/server/48709f0f/console
@@ -16,6 +17,8 @@
         value: 3000
       - key: PUBLIC_URL
         sync: false
+      - key: SELF_PING_INTERVAL_MS
+        value: "50000"
       - key: STORAGE_STATE_B64
         sync: false
       - key: AUTO_EXTEND_TARGET_SECONDS
